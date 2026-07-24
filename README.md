@@ -2,7 +2,7 @@
 
 ROS2 기반 실외 자율주행 로봇(캠퍼스 순찰·물류, 최종 50대 규모)의 텔레메트리를 중앙 서버로 전송하고, 서버발 명령을 안전하게 실행하는 **차량측 에이전트**입니다.
 
-> **현재 상태: M2 완료 (2026-07-24) — M3 착수 대기** — 진행 상황은 [docs/06_진행현황.md](docs/06_진행현황.md) 참조
+> **현재 상태: v1 마일스톤 M1~M6 완료 (2026-07-24)** — 진행 상황·검증 증빙은 [docs/06_진행현황.md](docs/06_진행현황.md) 참조
 
 ## 배경
 
@@ -105,10 +105,32 @@ SCV_Agent/
 │   ├── 04_ClaudeCode_킥오프프롬프트.md
 │   ├── 05_프로젝트계획서.md     # 마일스톤 WBS·테스트 전략·리스크
 │   ├── 06_진행현황.md          # 진행 트래킹 (상시 갱신)
+│   ├── config_reference.md    # 설정 레퍼런스
+│   ├── extending.md           # Sampler/Codec/Transport 확장 가이드
+│   ├── reports/               # 대역폭·성능 측정 리포트
 │   └── data_location.md       # 테스트용 rosbag 데이터 위치
 ├── fta_agent/                 # 메인 에이전트 패키지 (ament_python)
-└── fta_tools/                 # 테스트 도구 (테스트 리시버 등)
+├── fta_tools/                 # 테스트 도구 (테스트 리시버, 레지스트리 CLI)
+├── tests/integration/         # 단절·다운링크·성능 자동화 테스트
+├── tools/                     # soak 테스트 등 운영 스크립트
+└── deploy/                    # systemd 유닛·프로비저닝 예시
 ```
+
+## 다운링크 사용 (동적 인터페이스)
+
+```bash
+# 1. 인터페이스 레지스트리 발행 (retained — 전 차량 자동 동기화)
+ros2 run fta_tools registry_tool --file fta_tools/config/registry_example.yaml
+
+# 2. 명령 발행 + 결과 확인 (검증 체인: 등록 → 스키마 → TTL → 멱등성)
+python3 tests/integration/send_command.py --robot-id r01 --interface set_goal \
+    --payload '{"pose": {"position": {"x": 3.0, "y": 4.0}}}'
+# → {"cmd_id": "...", "status": "accepted", "detail": "/goal_pose 1회 발행"}
+```
+
+⚠️ **안전 (NFR-7)**: TTL 만료 명령은 절대 실행되지 않고 `expired`로 폐기됩니다.
+E-Stop 등 안전 기능은 다운링크에 의존해서는 안 되며, L2(주행 유발) 인터페이스는
+서버측 권한 검증이 완성되기 전까지 테스트 환경에서만 사용합니다.
 
 ## 마일스톤 로드맵
 
@@ -116,10 +138,13 @@ SCV_Agent/
 |---|---|---|
 | **M1** | 골격 + 최소 종단 연결 (`/odom` → MQTT → 리시버) | ✅ 완료 |
 | M2 | 샘플러 세트 (rate/deadband/event/on_demand) + 다중 파이프라인 | ✅ 완료 |
-| M3 | 코덱 (cdr_zstd/jpeg/voxel_zstd) + 온디맨드 스냅샷 | ⬜ |
-| M4 | 신뢰성 (DiskBuffer, 재연결 백오프, 토큰버킷) | ⬜ |
-| M5 | 다운링크 (동적 인터페이스, 검증 체인, 감사 로그) | ⬜ |
-| M6 | 관측성 + 운영 준비 (SelfTelemetry, systemd, soak 테스트) | ⬜ |
+| M3 | 코덱 (cdr_zstd/jpeg/voxel_zstd) + 온디맨드 스냅샷 | ✅ 완료 |
+| M4 | 신뢰성 (DiskBuffer, 재연결 백오프, 토큰버킷) | ✅ 완료 |
+| M5 | 다운링크 (동적 인터페이스, 검증 체인, 감사 로그) | ✅ 완료 |
+| M6 | 관측성 + 운영 준비 (SelfTelemetry, systemd, soak 테스트) | ✅ 완료 |
+
+측정 리포트: [M3 대역폭](docs/reports/M3_bandwidth_report.md) · [M6 성능 NFR-1/2](docs/reports/M6_performance_report.md)
+문서: [설정 레퍼런스](docs/config_reference.md) · [확장 가이드](docs/extending.md)
 
 상세 작업 분해는 [docs/05_프로젝트계획서.md](docs/05_프로젝트계획서.md) 참조.
 
