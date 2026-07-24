@@ -146,7 +146,12 @@ def main(argv=None) -> int:
     )
     client.on_connect = on_connect
     client.on_message = on_message
-    client.connect(args.host, args.port)
+    # 영속 세션: 리시버 단절 중에도 브로커가 QoS1 메시지를 보관 →
+    # 에이전트 DiskBuffer drain 시점과 리시버 재접속 시점의 경합 제거
+    props = mqtt.Properties(mqtt.PacketTypes.CONNECT)
+    props.SessionExpiryInterval = 3600
+    client.connect(args.host, args.port, clean_start=False, properties=props)
+    client.reconnect_delay_set(min_delay=1, max_delay=5)
     client.loop_start()
 
     print(f"[receiver] 기록: {args.out} (Ctrl+C로 종료)")

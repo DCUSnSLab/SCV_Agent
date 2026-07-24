@@ -1,0 +1,38 @@
+# M4 단절 자동화 테스트용 설정 (tests/integration/m4_disconnect_test.sh)
+# 전용 브로커(18883)를 사용해 임의로 차단/복구한다.
+
+agent:
+  robot_id: ${ROBOT_ID}
+  queue_maxlen_per_priority: 256
+  buffer:
+    dir: ${FTA_BUFFER_DIR}
+    max_disk_mb: 256
+  resource:
+    bandwidth_limit_kbps: 500
+
+transport:
+  type: mqtt
+  mqtt:
+    host: localhost
+    port: 18883
+    tls: false
+    keepalive_sec: 10
+
+pipelines:
+  # 손실 불가 이벤트: 카운터 값 변화마다 즉시 전송 (무손실 검증 대상)
+  - name: event_counter
+    topic: /event_counter
+    msg_type: std_msgs/msg/Int32
+    sampler: { type: event, field: data, condition: changed }
+    codec: { type: cbor }
+    priority: critical
+    msg_class: event
+
+  # 상태 데이터: 단절 중 최신값만 유지되는지 검증
+  - name: odom
+    topic: /odom
+    msg_type: nav_msgs/msg/Odometry
+    sampler: { type: rate, hz: 5 }
+    codec: { type: cbor }
+    priority: high
+    msg_class: state

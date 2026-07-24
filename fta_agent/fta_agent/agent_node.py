@@ -20,7 +20,11 @@ import fta_agent.codecs  # noqa: F401
 import fta_agent.transports  # noqa: F401
 
 from fta_agent.config.loader import ConfigError, load_config
+from fta_agent.core.disk_buffer import DiskBuffer
 from fta_agent.core.pipeline import Pipeline
+from fta_agent.downlink.audit import AuditLog
+from fta_agent.downlink.command_executor import CommandExecutor
+from fta_agent.downlink.registry_sync import RegistrySyncManager
 from fta_agent.core.priority_queue import PriorityOutQueue
 from fta_agent.core.registry import TRANSPORT_REGISTRY
 from fta_agent.core.subscription_manager import SubscriptionManager
@@ -44,7 +48,20 @@ class FtaAgent(Node):
         self.out_queue = PriorityOutQueue(
             maxlen_per_priority=cfg["agent"].get("queue_maxlen_per_priority", 256)
         )
-        self.uplink = UplinkManager(self.out_queue, self.transport)
+        buffer_cfg = cfg["agent"].get("buffer")
+        self.disk_buffer = (
+            DiskBuffer(buffer_cfg["dir"], buffer_cfg.get("max_disk_mb", 2048))
+            if buffer_cfg
+            else None
+        )
+        self.uplink = UplinkManager(
+            self.out_queue,
+            self.transport,
+            disk_buffer=self.disk_buffer,
+            bandwidth_limit_kbps=cfg["agent"].get("resource", {}).get(
+                "bandwidth_limit_kbps", 0
+            ),
+        )
         self.sub_manager = SubscriptionManager(self)
         self.pipelines: list[Pipeline] = []
 
@@ -77,6 +94,24 @@ class FtaAgent(Node):
                 )
                 logger.info("스냅샷 서비스: /fta/request_snapshot/%s", p.name)
 
+        # 다운링크 (FR-9, NFR-7) — 설정 opt-in
+        dl_cfg = cfg.get("downlink", {})
+        self.registry_sync = None
+        self.command_executor = None
+        self._audit = None
+        if dl_cfg.get("enabled", False):
+            self._audit = AuditLog(dl_cfg.get("audit_log", "fta_audit.jsonl"))
+            self.registry_sync = RegistrySyncManager(self.transport, robot_id)
+            self.command_executor = CommandExecutor(
+                node=self,
+                transport=self.transport,
+                registry=self.registry_sync,
+                audit=self._audit,
+                robot_id=robot_id,
+                service_timeout_sec=dl_cfg.get("command_timeout_sec", 10.0),
+            )
+            logger.info("다운링크 활성 — 실행 가능 대상은 레지스트리 동기화로만 결정됨")
+
         self._stats_timer = self.create_timer(10.0, self._log_stats)
 
     @staticmethod
@@ -90,6 +125,11 @@ class FtaAgent(Node):
         return cb
 
     def start(self) -> None:
+        # 구독 등록 후 connect — retained 레지스트리를 접속 즉시 수신
+        if self.registry_sync:
+            self.registry_sync.start()
+        if self.command_executor:
+            self.command_executor.start()
         self.transport.connect()
         for p in self.pipelines:
             p.start()
@@ -102,16 +142,21 @@ class FtaAgent(Node):
     def shutdown(self) -> None:
         for p in self.pipelines:
             p.stop()
+        if self.command_executor:
+            self.command_executor.stop()
         self.uplink.stop()
         self.transport.close()
+        if self._audit:
+            self._audit.close()
 
     def _log_stats(self) -> None:
         for p in self.pipelines:
             logger.info("파이프라인 '%s' 통계: %s", p.name, p.stats)
         logger.info(
-            "업링크 통계: %s, 큐: %s, 드롭: %s, conflated: %s, 연결: %s",
+            "업링크 통계: %s, 큐: %s, 드롭: %s, conflated: %s, 버퍼: %s, 연결: %s",
             self.uplink.stats, self.out_queue.qsize(),
             self.out_queue.dropped, self.out_queue.conflated,
+            self.disk_buffer.pending() if self.disk_buffer else "없음",
             self.transport.state().value,
         )
 

@@ -33,11 +33,13 @@ class MqttTransport(ITransport):
         tls: bool = False,
         keepalive_sec: int = 30,
         client_id: str = "",
+        ack_timeout_sec: float = 5.0,
     ):
         self._robot_id = robot_id
         self._host = host
         self._port = port
         self._keepalive = keepalive_sec
+        self._ack_timeout = ack_timeout_sec
         self._state = ConnState.DISCONNECTED
 
         self._client = mqtt.Client(
@@ -57,6 +59,7 @@ class MqttTransport(ITransport):
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
         self._client.reconnect_delay_set(min_delay=1, max_delay=30)
+        self._subscriptions: list = []  # (topic, callback) — 재연결 시 재구독
 
     def connect(self) -> None:
         self._state = ConnState.CONNECTING
@@ -72,7 +75,25 @@ class MqttTransport(ITransport):
             return False
         topic = f"fleet/{self._robot_id}/{msg_class}/{pipeline}"
         info = self._client.publish(topic, data, qos=reliability.value)
-        return info.rc == mqtt.MQTT_ERR_SUCCESS
+        if info.rc != mqtt.MQTT_ERR_SUCCESS:
+            return False
+        if reliability is Reliability.AT_LEAST_ONCE:
+            # 이벤트/critical: 브로커 ACK(PUBACK)까지 확인 — 미ACK이면 False를
+            # 반환해 호출측(UplinkManager)이 DiskBuffer에 보존한다 (02 §4.2)
+            try:
+                info.wait_for_publish(timeout=self._ack_timeout)
+            except (ValueError, RuntimeError):
+                return False
+            return info.is_published()
+        return True
+
+    def subscribe(self, topic: str, callback) -> None:
+        self._subscriptions.append((topic, callback))
+        self._client.message_callback_add(
+            topic, lambda c, u, m: callback(m.topic, m.payload)
+        )
+        if self._state is ConnState.CONNECTED:
+            self._client.subscribe(topic, qos=1)
 
     def state(self) -> ConnState:
         return self._state
@@ -89,6 +110,8 @@ class MqttTransport(ITransport):
         else:
             logger.info("MQTT 접속됨: %s:%s", self._host, self._port)
             self._state = ConnState.CONNECTED
+            for topic, _ in self._subscriptions:
+                client.subscribe(topic, qos=1)
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties):
         logger.warning("MQTT 단절 (정상 상황으로 처리, 자동 재접속): %s", reason_code)

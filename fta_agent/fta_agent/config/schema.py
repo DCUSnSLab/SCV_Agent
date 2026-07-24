@@ -5,6 +5,15 @@ CONFIG_SCHEMA = {
     "required": ["agent", "transport", "pipelines"],
     "additionalProperties": False,
     "properties": {
+        "downlink": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "enabled": {"type": "boolean"},
+                "command_timeout_sec": {"type": "number", "exclusiveMinimum": 0},
+                "audit_log": {"type": "string", "minLength": 1},
+            },
+        },
         "agent": {
             "type": "object",
             "required": ["robot_id"],
@@ -12,6 +21,24 @@ CONFIG_SCHEMA = {
             "properties": {
                 "robot_id": {"type": "string", "minLength": 1},
                 "queue_maxlen_per_priority": {"type": "integer", "minimum": 1},
+                "buffer": {
+                    "type": "object",
+                    "required": ["dir"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "dir": {"type": "string", "minLength": 1},
+                        "max_disk_mb": {"type": "integer", "minimum": 1},
+                    },
+                },
+                "resource": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "bandwidth_limit_kbps": {"type": "number", "exclusiveMinimum": 0},
+                        "cpu_limit_pct": {"type": "number", "exclusiveMinimum": 0},
+                        "mem_limit_mb": {"type": "number", "exclusiveMinimum": 0},
+                    },
+                },
             },
         },
         "transport": {
