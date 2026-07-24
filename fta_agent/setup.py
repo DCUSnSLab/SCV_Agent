@@ -9,7 +9,10 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
-        ("share/" + package_name + "/config", ["config/fta_example.yaml"]),
+        (
+            "share/" + package_name + "/config",
+            ["config/fta_example.yaml", "config/fta_m2_example.yaml"],
+        ),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

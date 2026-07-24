@@ -9,6 +9,7 @@ import logging
 import sys
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rosidl_runtime_py.utilities import get_message
 
@@ -83,8 +84,10 @@ class FtaAgent(Node):
         for p in self.pipelines:
             logger.info("파이프라인 '%s' 통계: %s", p.name, p.stats)
         logger.info(
-            "업링크 통계: %s, 큐: %s, 연결: %s",
-            self.uplink.stats, self.out_queue.qsize(), self.transport.state().value,
+            "업링크 통계: %s, 큐: %s, 드롭: %s, conflated: %s, 연결: %s",
+            self.uplink.stats, self.out_queue.qsize(),
+            self.out_queue.dropped, self.out_queue.conflated,
+            self.transport.state().value,
         )
 
 
@@ -108,7 +111,8 @@ def main(argv=None) -> int:
     rclpy.init(args=ros_args)
     try:
         agent = FtaAgent(cfg)
-    except ConfigError as e:
+    except (ConfigError, ValueError, TypeError) as e:
+        # 샘플러/코덱 파라미터 오류 포함 — 조용한 오동작 대신 즉시 종료 (FR-6.3)
         logger.error("설정 오류로 기동 중단: %s", e)
         rclpy.shutdown()
         return 1
@@ -116,8 +120,8 @@ def main(argv=None) -> int:
     agent.start()
     try:
         rclpy.spin(agent)
-    except KeyboardInterrupt:
-        pass
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass  # SIGINT/SIGTERM — 정상 종료 경로
     finally:
         agent.shutdown()
         agent.destroy_node()

@@ -100,4 +100,4 @@ class Pipeline:
         )
         self._seq += 1
         self.stats["encoded"] += 1
-        self._out.push((self, env.to_cbor()), self.priority)
+        self._out.push((self, env.to_cbor()), self.priority, conflate_key=self.name)
