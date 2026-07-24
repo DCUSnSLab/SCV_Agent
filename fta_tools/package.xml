@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>fta_tools</name>
+  <version>0.1.0</version>
+  <description>FTA 검증용 도구 — 테스트 리시버 (FR-8)</description>
+  <maintainer email="marsberry@cu.ac.kr">soobin Jeon</maintainer>
+  <license>MIT</license>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

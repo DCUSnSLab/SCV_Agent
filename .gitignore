@@ -1,0 +1,13 @@
+# colcon
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# 수신 기록·로컬 산출물
+*.jsonl
