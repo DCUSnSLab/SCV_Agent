@@ -19,13 +19,28 @@ from collections import defaultdict
 
 import cbor2
 import paho.mqtt.client as mqtt
+import zstandard
 
 
 def _decode_payload(encoding: str, payload: bytes):
     """encoding 식별자(FR-3.3)에 따라 payload를 JSON 호환 값으로 디코딩."""
     if encoding == "cbor":
         return cbor2.loads(payload)
-    # 미지원 인코딩(cdr 원본 등)은 base64로 보존
+    if encoding == "cdr_zstd":
+        raw = zstandard.ZstdDecompressor().decompress(payload)
+        return {"_encoding": encoding, "_size": len(payload), "_cdr_size": len(raw)}
+    if encoding == "voxel_zstd":
+        meta = cbor2.loads(zstandard.ZstdDecompressor().decompress(payload))
+        return {
+            "_encoding": encoding,
+            "_size": len(payload),
+            "voxel_size": meta["voxel_size"],
+            "count": meta["count"],
+            "format": meta["format"],
+        }
+    if encoding == "jpeg":
+        return {"_encoding": encoding, "_size": len(payload)}
+    # 미지원 인코딩은 base64로 보존
     return {"_b64": base64.b64encode(payload).decode(), "_size": len(payload)}
 
 
@@ -66,6 +81,10 @@ def main(argv=None) -> int:
     parser.add_argument("--topic", default="fleet/#")
     parser.add_argument("--out", default="fta_received.jsonl", help="jsonl 기록 경로")
     parser.add_argument("--stats-interval", type=float, default=5.0)
+    parser.add_argument(
+        "--save-bulk", default="", metavar="DIR",
+        help="bulk payload(jpeg 등)를 파일로 저장할 디렉토리 (기본: 저장 안 함)",
+    )
     args = parser.parse_args(argv)
 
     # 로그 파일로 리다이렉트해도 통계가 실시간으로 보이도록 라인 버퍼링
@@ -87,6 +106,15 @@ def main(argv=None) -> int:
             return
         try:
             env = cbor2.loads(m.payload)
+            if args.save_bulk and env["encoding"] in ("jpeg", "voxel_zstd"):
+                import pathlib
+
+                ext = "jpg" if env["encoding"] == "jpeg" else "bin"
+                p = pathlib.Path(args.save_bulk)
+                p.mkdir(parents=True, exist_ok=True)
+                (p / f"{env['pipeline']}_{env['seq']:06d}.{ext}").write_bytes(
+                    env["payload"]
+                )
             record = {
                 "recv_time": now,
                 "mqtt_topic": m.topic,

@@ -53,6 +53,10 @@ class Pipeline:
             target=self._run, name=f"pipeline-{self.name}", daemon=True
         )
 
+    @property
+    def sampler(self):
+        return self._sampler
+
     def start(self) -> None:
         self._worker.start()
 

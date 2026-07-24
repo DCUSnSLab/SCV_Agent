@@ -11,7 +11,11 @@ setup(
         ("share/" + package_name, ["package.xml"]),
         (
             "share/" + package_name + "/config",
-            ["config/fta_example.yaml", "config/fta_m2_example.yaml"],
+            [
+                "config/fta_example.yaml",
+                "config/fta_m2_example.yaml",
+                "config/fta_bag_replay.yaml",
+            ],
         ),
     ],
     install_requires=["setuptools"],

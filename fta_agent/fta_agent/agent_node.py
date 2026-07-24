@@ -12,6 +12,7 @@ import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rosidl_runtime_py.utilities import get_message
+from std_srvs.srv import Trigger
 
 # 플러그인 자기등록 (구체 클래스 직접 참조 없이 import 부수효과로 등록)
 import fta_agent.samplers  # noqa: F401
@@ -62,7 +63,31 @@ class FtaAgent(Node):
             self.pipelines.append(pipeline)
             self.sub_manager.subscribe(pipeline, msg_class_obj, spec.get("qos"))
 
+        # 온디맨드 파이프라인용 로컬 스냅샷 서비스 (02 문서 §3.10-1)
+        # request() 지원 여부는 덕 타이핑으로 판별 — 구체 샘플러 클래스 비참조
+        self._snapshot_services = []
+        for p in self.pipelines:
+            if hasattr(p.sampler, "request"):
+                self._snapshot_services.append(
+                    self.create_service(
+                        Trigger,
+                        f"fta/request_snapshot/{p.name}",
+                        self._make_snapshot_cb(p),
+                    )
+                )
+                logger.info("스냅샷 서비스: /fta/request_snapshot/%s", p.name)
+
         self._stats_timer = self.create_timer(10.0, self._log_stats)
+
+    @staticmethod
+    def _make_snapshot_cb(pipeline: Pipeline):
+        def cb(request, response):
+            pipeline.sampler.request()
+            response.success = True
+            response.message = f"'{pipeline.name}' 다음 프레임 1장 전송 예약됨"
+            return response
+
+        return cb
 
     def start(self) -> None:
         self.transport.connect()
