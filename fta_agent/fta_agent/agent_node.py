@@ -25,6 +25,8 @@ from fta_agent.core.pipeline import Pipeline
 from fta_agent.downlink.audit import AuditLog
 from fta_agent.downlink.command_executor import CommandExecutor
 from fta_agent.downlink.registry_sync import RegistrySyncManager
+from fta_agent.observability.resource_governor import ResourceGovernor
+from fta_agent.observability.self_telemetry import SelfTelemetry
 from fta_agent.core.priority_queue import PriorityOutQueue
 from fta_agent.core.registry import TRANSPORT_REGISTRY
 from fta_agent.core.subscription_manager import SubscriptionManager
@@ -112,6 +114,21 @@ class FtaAgent(Node):
             )
             logger.info("다운링크 활성 — 실행 가능 대상은 레지스트리 동기화로만 결정됨")
 
+        # 관측성 (FR-7) — health 발행 + 리소스 감시·절제
+        self.telemetry = SelfTelemetry(
+            self, interval_sec=cfg["agent"].get("telemetry", {}).get("interval_sec", 10.0)
+        )
+        res_cfg = cfg["agent"].get("resource", {})
+        self.governor = (
+            ResourceGovernor(
+                self,
+                cpu_limit_pct=res_cfg.get("cpu_limit_pct", 20.0),
+                mem_limit_mb=res_cfg.get("mem_limit_mb", 512.0),
+            )
+            if ("cpu_limit_pct" in res_cfg or "mem_limit_mb" in res_cfg)
+            else None
+        )
+
         self._stats_timer = self.create_timer(10.0, self._log_stats)
 
     @staticmethod
@@ -161,16 +178,39 @@ class FtaAgent(Node):
         )
 
 
+class JsonLogFormatter(logging.Formatter):
+    """구조화 로깅 (FR-7.3) — 라인당 JSON 1건, 수집기 friendly."""
+
+    def format(self, record):
+        import json as _json
+
+        entry = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        if record.exc_info:
+            entry["exc"] = self.formatException(record.exc_info)
+        return _json.dumps(entry, ensure_ascii=False)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="FTA (Fleet Telemetry Agent)")
     parser.add_argument("--config", required=True, help="파이프라인 설정 YAML 경로")
     parser.add_argument("--log-level", default="INFO")
+    parser.add_argument("--log-format", choices=["text", "json"], default="text")
     args, ros_args = parser.parse_known_args(argv)
 
-    logging.basicConfig(
-        level=args.log_level.upper(),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
+    if args.log_format == "json":
+        handler = logging.StreamHandler()
+        handler.setFormatter(JsonLogFormatter())
+        logging.basicConfig(level=args.log_level.upper(), handlers=[handler])
+    else:
+        logging.basicConfig(
+            level=args.log_level.upper(),
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        )
 
     try:
         cfg = load_config(args.config)

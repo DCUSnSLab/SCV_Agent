@@ -39,6 +39,13 @@ CONFIG_SCHEMA = {
                         "mem_limit_mb": {"type": "number", "exclusiveMinimum": 0},
                     },
                 },
+                "telemetry": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "interval_sec": {"type": "number", "exclusiveMinimum": 0},
+                    },
+                },
             },
         },
         "transport": {

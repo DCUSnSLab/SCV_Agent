@@ -47,7 +47,9 @@ class Pipeline:
         self._out = out_queue
         self._in: queue.Queue = queue.Queue(maxsize=input_maxsize)
         self._seq = 0
-        self.stats = {"in": 0, "sampled_out": 0, "encoded": 0, "drop_in_full": 0, "error": 0}
+        self.stats = {"in": 0, "sampled_out": 0, "encoded": 0, "drop_in_full": 0,
+                      "drop_paused": 0, "error": 0}
+        self._paused = False  # ResourceGovernor의 bulk 절제용
         self._stop = threading.Event()
         self._worker = threading.Thread(
             target=self._run, name=f"pipeline-{self.name}", daemon=True
@@ -64,9 +66,22 @@ class Pipeline:
         self._stop.set()
         self._worker.join(timeout=2.0)
 
+    def pause(self) -> None:
+        self._paused = True
+
+    def resume(self) -> None:
+        self._paused = False
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
     def submit(self, raw: bytes) -> None:
         """구독 콜백 진입점 — 큐 적재 후 즉시 반환. 포화 시 드롭(집계만)."""
         self.stats["in"] += 1
+        if self._paused:
+            self.stats["drop_paused"] += 1
+            return
         try:
             self._in.put_nowait(raw)
         except queue.Full:

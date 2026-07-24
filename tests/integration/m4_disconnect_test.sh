@@ -17,8 +17,19 @@ export ROS_DOMAIN_ID=42   # 동시 실행 중인 다른 테스트와 DDS 격리
 rm -rf "$WORK"; mkdir -p "$WORK/buffer"
 echo "[m4-test] 산출물: $WORK, 차단 시간: ${CUT_SEC}s"
 
+# 브로커에 persistence 필수: 리시버(=서버 인제스천 모델)의 내구 세션이 브로커
+# 재시작을 넘어 유지되어야, 에이전트 drain이 리시버 재구독보다 먼저 도착해도
+# 세션 큐에 보관된다. 실서버 브로커 요구사항과 동일 (03 문서 계약 참조).
 start_broker() {
-  /usr/sbin/mosquitto -p 18883 > "$WORK/broker.log" 2>&1 &
+  mkdir -p "$WORK/mosq_data"
+  cat > "$WORK/mosq.conf" << EOF
+listener 18883
+allow_anonymous true
+persistence true
+persistence_location $WORK/mosq_data/
+max_queued_messages 5000
+EOF
+  /usr/sbin/mosquitto -c "$WORK/mosq.conf" >> "$WORK/broker.log" 2>&1 &
   BROKER_PID=$!
   sleep 1
 }

@@ -8,6 +8,12 @@
 agent:
   robot_id: ${ROBOT_ID}
   queue_maxlen_per_priority: 256
+  resource:
+    bandwidth_limit_kbps: 1000   # NFR-2.1 기본 상한
+    cpu_limit_pct: 20            # NFR-1.3
+    mem_limit_mb: 512            # NFR-1.4
+  telemetry:
+    interval_sec: 5
 
 transport:
   type: mqtt

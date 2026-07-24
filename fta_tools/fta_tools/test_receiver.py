@@ -100,9 +100,9 @@ def main(argv=None) -> int:
 
     def on_message(client, userdata, m):
         now = time.time()
-        # 비-envelope 채널 (lwt 등)
-        if "/sys/" in m.topic:
-            print(f"[receiver] {m.topic}: {m.payload!r}")
+        # 비-envelope 채널 (lwt, agent/health·registry_status 등 JSON 채널)
+        if "/sys/" in m.topic or "/agent/" in m.topic or "/cmd" in m.topic:
+            print(f"[receiver] {m.topic}: {m.payload[:120]!r}")
             return
         try:
             env = cbor2.loads(m.payload)
