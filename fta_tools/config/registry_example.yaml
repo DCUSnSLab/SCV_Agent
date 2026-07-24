@@ -1,0 +1,62 @@
+# 테스트 레지스트리 정의 예시 (FR-9.2 스키마 — 02 문서 §3.11 계약)
+#
+# 발행: ros2 run fta_tools registry_tool --file fta_tools/config/registry_example.yaml
+version: 1
+interfaces:
+  # 목적지 설정 — kind=topic (02 문서 §4.5 시나리오)
+  - interface_id: set_goal
+    name: "목적지 설정"
+    kind: topic
+    ros_type: geometry_msgs/msg/PoseStamped
+    target: /goal_pose
+    qos: { reliability: reliable, depth: 1 }
+    permission_level: L2          # 주행 유발 — 운영 사용 금지(테스트 한정, NFR-7.4)
+    default_ttl_sec: 30           # L2 잠정 기본값 (NFR-7.1)
+    version: 1
+    schema:
+      type: object
+      required: [pose]
+      additionalProperties: true
+      properties:
+        header:
+          type: object
+        pose:
+          type: object
+          required: [position]
+          properties:
+            position:
+              type: object
+              required: [x, y]
+              properties:
+                x: { type: number }
+                y: { type: number }
+                z: { type: number }
+            orientation:
+              type: object
+
+  # 스냅샷 요청 — kind=service (02 문서 §3.10-2: 서버발 온디맨드)
+  - interface_id: request_snapshot_front_cam
+    name: "전방 카메라 스냅샷 요청"
+    kind: service
+    ros_type: std_srvs/srv/Trigger
+    target: /fta/request_snapshot/front_cam_snapshot
+    qos: {}
+    permission_level: L0          # 조회성
+    default_ttl_sec: 300          # L0 잠정 기본값 5분
+    version: 1
+    schema:
+      type: object
+      additionalProperties: false  # Trigger 요청은 빈 객체
+
+  # 미지원 검증용 — 이 개발 머신에 hunter_msgs typesupport 없음
+  # → registry_status에 unsupported로 보고되어야 함 (FR-9.3 음성 케이스)
+  - interface_id: hunter_mode
+    name: "Hunter 주행 모드 변경"
+    kind: topic
+    ros_type: hunter_msgs/msg/HunterMotorState
+    target: /hunter/mode
+    qos: { reliability: reliable, depth: 1 }
+    permission_level: L1
+    default_ttl_sec: 300
+    version: 1
+    schema: { type: object }

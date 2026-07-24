@@ -9,6 +9,7 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
+        ("share/" + package_name + "/config", ["config/registry_example.yaml"]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -19,6 +20,7 @@ setup(
     entry_points={
         "console_scripts": [
             "test_receiver = fta_tools.test_receiver:main",
+            "registry_tool = fta_tools.registry_tool:main",
         ],
     },
 )

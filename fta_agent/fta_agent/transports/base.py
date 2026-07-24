@@ -36,6 +36,14 @@ class ITransport(ABC):
         """전송 시도 결과 반환. 미연결 시 False (블로킹 금지)."""
 
     @abstractmethod
+    def subscribe(self, topic: str, callback) -> None:
+        """다운링크 수신 구독. callback(topic: str, payload: bytes).
+
+        재연결 시에도 구독이 유지되어야 한다. topic 문법(와일드카드 등)은
+        구현체 프로토콜을 따른다 — 호출측은 02 문서 §3.7 네임스페이스만 사용.
+        """
+
+    @abstractmethod
     def state(self) -> ConnState:
         ...
 

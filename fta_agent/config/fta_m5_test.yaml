@@ -1,0 +1,36 @@
+# M5 다운링크 종단 검증용 설정 (tests/integration/m5_downlink_test.sh)
+
+agent:
+  robot_id: ${ROBOT_ID}
+  queue_maxlen_per_priority: 256
+
+transport:
+  type: mqtt
+  mqtt:
+    host: localhost
+    port: 1883
+    tls: false
+    keepalive_sec: 30
+
+downlink:
+  enabled: true
+  command_timeout_sec: 10
+  audit_log: ${FTA_AUDIT_LOG}
+
+pipelines:
+  - name: odom
+    topic: /odom
+    msg_type: nav_msgs/msg/Odometry
+    sampler: { type: rate, hz: 2 }
+    codec: { type: cbor }
+    priority: high
+    msg_class: state
+
+  # 다운링크 service kind가 호출할 스냅샷 대상 (02 §3.10-2 서버발 온디맨드)
+  - name: front_cam_snapshot
+    topic: /camera/image_raw
+    msg_type: sensor_msgs/msg/Image
+    sampler: { type: on_demand }
+    codec: { type: jpeg, quality: 70 }
+    priority: low
+    msg_class: bulk
