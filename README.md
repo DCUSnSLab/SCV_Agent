@@ -2,7 +2,7 @@
 
 ROS2 기반 실외 자율주행 로봇(캠퍼스 순찰·물류, 최종 50대 규모)의 텔레메트리를 중앙 서버로 전송하고, 서버발 명령을 안전하게 실행하는 **차량측 에이전트**입니다.
 
-> **현재 상태: M1 (골격 + 최소 종단 연결) 진행 중** — 진행 상황은 [docs/06_진행현황.md](docs/06_진행현황.md) 참조
+> **현재 상태: M1 완료 (2026-07-24) — M2 착수 대기** — 진행 상황은 [docs/06_진행현황.md](docs/06_진행현황.md) 참조
 
 ## 배경
 
@@ -65,8 +65,12 @@ ROS2 기반 실외 자율주행 로봇(캠퍼스 순찰·물류, 최종 50대 �
 
 ```bash
 # 1. 의존성 설치
-sudo apt install mosquitto mosquitto-clients
-/usr/bin/python3 -m pip install paho-mqtt cbor2 zstandard jsonschema pytest
+/usr/bin/python3 -m pip install --user paho-mqtt cbor2 zstandard jsonschema pytest
+# 개발 브로커 (둘 중 하나)
+sudo apt install mosquitto mosquitto-clients      # (a) 네이티브 설치
+docker run -d --name fta-dev-broker -p 1883:1883 \
+  -v $PWD/.dev/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf \
+  eclipse-mosquitto:2                             # (b) docker
 
 # 2. 빌드
 source /opt/ros/humble/setup.bash
@@ -79,13 +83,13 @@ ros2 run fta_tools test_receiver --out /tmp/fta_received.jsonl
 
 # 터미널 B — 에이전트
 export ROBOT_ID=r01
-ros2 run fta_agent agent --config src/fta_agent/config/fta_example.yaml
+ros2 run fta_agent agent --config fta_agent/config/fta_example.yaml
 
 # 터미널 C — 가상 데이터 발행
 ros2 topic pub -r 10 /odom nav_msgs/msg/Odometry
 
 # 4. 단위 테스트
-colcon test --packages-select fta_agent && colcon test-result --verbose
+/usr/bin/python3 -m pytest fta_agent/test/ -v
 ```
 
 ## 저장소 구조
@@ -110,7 +114,7 @@ SCV_Agent/
 
 | 마일스톤 | 내용 | 상태 |
 |---|---|---|
-| **M1** | 골격 + 최소 종단 연결 (`/odom` → MQTT → 리시버) | 🔄 진행 중 |
+| **M1** | 골격 + 최소 종단 연결 (`/odom` → MQTT → 리시버) | ✅ 완료 |
 | M2 | 샘플러 세트 (rate/deadband/event/on_demand) + 다중 파이프라인 | ⬜ |
 | M3 | 코덱 (cdr_zstd/jpeg/voxel_zstd) + 온디맨드 스냅샷 | ⬜ |
 | M4 | 신뢰성 (DiskBuffer, 재연결 백오프, 토큰버킷) | ⬜ |
