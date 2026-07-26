@@ -11,3 +11,6 @@ __pycache__/
 
 # 수신 기록·로컬 산출물
 *.jsonl
+
+# PDF 변환용 vendor 라이브러리 (자동 다운로드)
+tools/vendor/
