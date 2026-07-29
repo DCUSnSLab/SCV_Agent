@@ -11,7 +11,7 @@
 | 키 | 필수 | 기본값 | 설명 |
 |---|---|---|---|
 | `robot_id` | ✅ | — | 로봇 식별자. MQTT 네임스페이스 `fleet/{robot_id}/...`에 사용 |
-| `queue_maxlen_per_priority` | | 256 | 우선순위별 송신 큐 길이. 포화 시: low/normal 오래된 것 드롭, high conflation |
+| `queue_maxlen_per_priority` | | 256 | 우선순위별 송신 큐 길이. 포화 시: low/normal 오래된 것 드롭, high conflation, **critical·이벤트는 DiskBuffer로 이관**(버퍼 미설정 시 드롭) |
 | `buffer.dir` | | (없으면 버퍼 비활성) | DiskBuffer 디렉토리 — 단절 시 store & forward (FR-5.2) |
 | `buffer.max_disk_mb` | | 2048 | 디스크 상한. 초과 시 오래된 세그먼트 삭제 (FR-5.3) |
 | `resource.bandwidth_limit_kbps` | | (무제한) | 토큰버킷 업링크 상한. critical은 우회 (NFR-2.1/2.5) |

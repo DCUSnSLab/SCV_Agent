@@ -14,7 +14,10 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO"
 source /opt/ros/humble/setup.bash
 source install/setup.bash
+source tests/integration/common.sh
 export ROS_DOMAIN_ID=44 ROBOT_ID=soak01 FTA_BUFFER_DIR="$WORK/buffer"
+
+fta_preflight soak    # 잔존 프로세스가 있으면 시작 전에 중단 (A-5)
 
 rm -rf "$WORK"; mkdir -p "$WORK/buffer"
 DURATION_S=$(python3 -c "print(int($DURATION_H * 3600))")

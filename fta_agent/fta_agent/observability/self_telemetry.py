@@ -39,6 +39,7 @@ class SelfTelemetry:
             "queue": {
                 "size": a.out_queue.qsize(),
                 "dropped": dict(a.out_queue.dropped),
+                "preserved": dict(a.out_queue.preserved),  # 포화 시 버퍼로 이관된 건수
                 "conflated": dict(a.out_queue.conflated),
             },
             "buffer": a.disk_buffer.pending() if a.disk_buffer else None,

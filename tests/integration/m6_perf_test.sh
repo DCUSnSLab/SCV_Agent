@@ -8,10 +8,16 @@ REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO"
 source /opt/ros/humble/setup.bash
 source install/setup.bash
+source tests/integration/common.sh
 export ROS_DOMAIN_ID=43
+
+fta_preflight m6-test    # 잔존 프로세스가 리소스 측정을 오염시키므로 사전 차단 (A-5)
 
 rm -rf "$WORK"; mkdir -p "$WORK"
 export ROBOT_ID=r01
+
+cleanup() { kill $MON_PID $AGENT_PID $RECV_PID $BAGPID 2>/dev/null; }
+trap cleanup EXIT        # 어떤 경로로 종료하든 자식 정리 (A-5)
 
 /usr/bin/python3 install/fta_tools/lib/fta_tools/test_receiver \
   --out "$WORK/received.jsonl" > "$WORK/receiver.log" 2>&1 &
@@ -50,8 +56,9 @@ SNAP_T0=$(/usr/bin/python3 -c "import time; print(time.time())")
 ros2 service call /fta/request_snapshot/front_cam_snapshot std_srvs/srv/Trigger > /dev/null 2>&1
 wait $BAGPID 2>/dev/null
 sleep 3
-kill $MON_PID $AGENT_PID $RECV_PID 2>/dev/null
+cleanup
 sleep 1
+fta_check_leftover
 
 /usr/bin/python3 - "$WORK" "$SNAP_T0" << 'EOF'
 import csv, json, statistics, sys
