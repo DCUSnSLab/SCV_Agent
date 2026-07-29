@@ -25,7 +25,10 @@
 |---|---|---|
 | `type` | ✅ | 레지스트리 키. v1: `mqtt` |
 | `mqtt.host` / `mqtt.port` | ✅ / (1883) | 브로커 주소 |
-| `mqtt.tls` | (false) | TLS 사용 — 운영 필수 (NFR-5.1) |
+| `mqtt.tls` | (false) | TLS 사용 — 운영 필수 (NFR-5.1). 인자 없이 켜면 **OS 신뢰저장소**로 서버 인증서를 검증 (공인 CA용) |
+| `mqtt.ca_certs` | | 사설 CA 인증서 경로. 자체 서명 브로커 인증서를 쓸 때만 필요 (경로는 `${ENV}` 주입 권장) |
+| `mqtt.certfile` / `mqtt.keyfile` | | 클라이언트 인증서·키 (mTLS). 둘 다 지정해야 하며 하나만 주면 기동 실패 |
+| `mqtt.tls_insecure` | (false) | 인증서 호스트명 검증 생략 — IP 접속 테스트 한정, **운영 금지** |
 | `mqtt.keepalive_sec` | (30) | 단절 감지 주기 |
 | `mqtt.client_id` | (`fta-{robot_id}`) | 로봇별 유일해야 함 (중복 시 상호 세션 킥) |
 | `mqtt.ack_timeout_sec` | (5) | QoS1 PUBACK 대기 시간 — 초과 시 DiskBuffer 보존 |

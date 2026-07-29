@@ -58,5 +58,7 @@ M1 골격+종단 연결 → M2 샘플러 세트 → M3 코덱+Bulk → M4 신뢰
 source /opt/ros/humble/setup.bash
 colcon build --symlink-install && source install/setup.bash
 colcon test --packages-select fta_agent && colcon test-result --verbose
-# 또는 단위 테스트만: /usr/bin/python3 -m pytest fta_agent/test/ -v
+# 또는 단위 테스트만 (install source 선행 필수 — 없으면 저장소 루트의
+# fta_agent/ 디렉토리가 먼저 잡혀 ModuleNotFoundError):
+source install/setup.bash && /usr/bin/python3 -m pytest fta_agent/test/ -v
 ```

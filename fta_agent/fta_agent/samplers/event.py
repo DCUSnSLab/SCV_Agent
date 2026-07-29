@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import operator
 
-from fta_agent.core.field_path import get_field
+from fta_agent.core.field_path import as_number, get_field
 from fta_agent.core.message_view import MessageView
 from fta_agent.core.registry import SAMPLER_REGISTRY
 from fta_agent.samplers.base import Decision, ISampler
@@ -49,7 +49,8 @@ class EventSampler(ISampler):
             fire = self._first or current != self._last
             self._last = current
         else:
-            state = _OPS[self._condition](current, self._value)
+            # octet/uint8 필드는 bytes로 노출되므로 비교 전에 정규화한다
+            state = _OPS[self._condition](as_number(current, self._field), self._value)
             fire = self._first or (state and not self._was_true)
             self._was_true = state
 

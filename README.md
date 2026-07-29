@@ -297,6 +297,7 @@ ROS2 토픽 ──구독──▶ [sampler: 보낼지 말지] ──▶ [codec: 
 - `deadband`/`event`의 `field`는 점 구분 경로입니다: `pose.pose.position.x`, `status[0].level` (배열 인덱스 지원).
 - `event`의 `condition`: `changed`(값이 바뀔 때) / `eq·ne·gt·gte·lt·lte`(비교 조건이 **거짓→참으로 바뀔 때**만 1회). 비교 조건에는 `value` 필수.
 - `deadband`·`event` 모두 **첫 메시지는 통과**시킵니다 (서버가 초기 상태를 확보하도록).
+- `octet`/`uint8` 필드는 rclpy가 길이 1의 `bytes`로 노출하는데, 비교 시 자동으로 정수로 변환됩니다 — `DiagnosticStatus.level`에 `gte: 1`을 그대로 쓸 수 있습니다.
 - `on_demand` 파이프라인에는 로컬 트리거 서비스가 자동 생성됩니다: `/fta/request_snapshot/{name}` (`std_srvs/srv/Trigger`). 서버발 트리거는 다운링크 레지스트리에 이 서비스를 등록하면 됩니다(3장).
 
 **② codec — 어떤 형식으로 실을지**
@@ -489,7 +490,7 @@ ros2 run fta_tools test_receiver --out /tmp/check.jsonl
 
 | 실수 | 결과 | 바로잡기 |
 |---|---|---|
-| `octet`/`uint8` 필드에 수치 비교 (`gte: 1`) | rclpy가 해당 필드를 `bytes`로 노출해 `TypeError` — 해당 메시지만 폐기되고 통계 `error` 증가 | `condition: changed`를 쓰거나 float/int 필드를 고를 것 (예: `DiagnosticStatus.level`은 octet) |
+| 문자열·바이트열 필드에 수치 비교 (`gte: 1`) | 수치가 아니므로 `TypeError` — 해당 메시지만 폐기되고 통계 `error` 증가 | 수치 필드를 고르거나 `condition: changed` 사용. `octet`/`uint8`(예: `DiagnosticStatus.level`)은 rclpy가 `bytes`로 노출하지만 **자동으로 정수 변환**되므로 `gte: 1` 그대로 동작합니다 |
 | latched 토픽에 QoS 미지정 | 아무것도 수신되지 않음 (`in: 0`) | `qos: { reliability: reliable, durability: transient_local, depth: 1 }` |
 | 대용량 토픽에 `passthrough` | 대역폭 폭증 | `rate` + `jpeg`/`voxel_zstd`, `msg_class: bulk` |
 | bulk에 `critical` 지정 | 대역폭 상한을 우회해 링크를 잠식 | bulk는 `low` 고정, `critical`은 사건성 소형 메시지에만 |
@@ -592,8 +593,27 @@ FTA_AUDIT_LOG=/var/lib/fta/audit.jsonl
 ```
 
 - 인증 정보는 **환경변수로만** 주입됩니다. 설정 파일·소스에 넣지 마십시오 (NFR-5.3).
-- `mqtt.tls: true`는 **시스템 CA 신뢰 저장소**를 사용합니다. 사설 CA라면 로봇 OS의 신뢰 저장소에 CA 인증서를 등록하십시오(`/usr/local/share/ca-certificates/` + `update-ca-certificates`).
 - 방화벽은 **아웃바운드만** 열면 됩니다 (에이전트는 서버에 접속하는 쪽입니다).
+
+#### 평문 → TLS 전환 체크리스트
+
+개발·파일럿은 평문(`tls: false`)으로 운영합니다. 도메인과 인증서가 준비되면 아래만 바꾸면 됩니다 — **코드 변경은 없습니다**.
+
+| 순서 | 작업 | 확인 |
+|---|---|---|
+| 1 | 브로커에 인증서 설치 (Let's Encrypt 등 공인 CA) | `openssl s_client -connect 호스트:8883` 로 체인 확인 |
+| 2 | 설정에 `tls: true`, `port: 8883` | 인자 없이 켜면 로봇 **OS 신뢰저장소**로 검증 — 로봇에 인증서 배포 불필요 |
+| 3 | 브로커 `allow_anonymous false` + 로봇별 계정 발급 | TLS만 켜고 익명 허용이면 의미가 없습니다 |
+| 4 | `/etc/fta/fta.env`에 `FTA_MQTT_USERNAME`/`PASSWORD` | 로봇마다 다른 값 (유출 시 개별 폐기) |
+| 5 | 아웃바운드 8883 허용 | 에이전트가 접속하는 쪽이라 인바운드 개방 불필요 |
+
+공인 인증서를 쓸 수 없는 경우(도메인 없음 등)의 대안:
+
+- **사설 CA**: 자체 서명 인증서를 만들고 `mqtt.ca_certs: ${FTA_CA_CERT}`로 경로 지정. 또는 로봇 OS 신뢰저장소에 CA 등록(`/usr/local/share/ca-certificates/` + `update-ca-certificates`). 외부 기관 발급 절차가 없습니다.
+- **클라이언트 인증서(mTLS)**: `mqtt.certfile`/`mqtt.keyfile` 지정. 로봇 50대분 발급·폐기 운영이 필요하므로, username/password로 NFR-5.2를 충족하는 편이 간단합니다.
+- **VPN 터널**: 사설 APN·WireGuard로 전송 구간을 보호하면 TLS와 동등한 충족으로 봅니다 (NFR-5.1 단서).
+
+> ⚠️ 평문으로 운영하는 동안에는 **브로커가 외부망에서 도달 불가**해야 하고, 다운링크는 끄거나 내부망으로 한정하십시오. 평문 구간에서는 검증 체인(NFR-7)이 위조 명령을 걸러내지 못합니다 — 발신자 진위는 전송 계층이 담당합니다.
 
 ### 6.5 systemd 등록
 
@@ -668,7 +688,7 @@ MQTT 토픽 네임스페이스 전체(서버 계약)는 [docs/config_reference.m
 | `MQTT 단절 (정상 상황으로 처리, 자동 재접속)`이 수 초 간격 반복 | client_id 중복 — 같은 `ROBOT_ID`의 에이전트가 이미 떠 있음. 잔존 프로세스 확인(2.5) 또는 로봇별 유일 ID 부여 |
 | 파이프라인 통계 `in: 0` | 토픽명 오타, DDS 도메인 불일치(`ROS_DOMAIN_ID`), 또는 발행자 미기동. `ros2 topic hz <topic>`으로 확인 |
 | 비주기 latched 토픽을 못 받음 | `qos: { durability: transient_local, reliability: reliable, depth: 1 }` 지정 필요 |
-| 특정 파이프라인 통계의 `error`가 계속 증가 | 대부분 `deadband`/`event`의 `field` 문제입니다 — 경로 오타이거나, `octet`/`uint8` 필드를 수치 비교한 경우(`bytes`와 int 비교 TypeError). 로그의 Traceback과 [5.7 자주 하는 실수](#57-자주-하는-실수) 참조. 해당 메시지만 폐기되고 에이전트는 계속 동작합니다 |
+| 특정 파이프라인 통계의 `error`가 계속 증가 | 대부분 `deadband`/`event`의 `field` 문제입니다 — 경로 오타이거나, 수치가 아닌 필드(문자열·다중 바이트열)를 비교 조건에 쓴 경우. 로그의 Traceback과 [5.7 자주 하는 실수](#57-자주-하는-실수) 참조. 해당 메시지만 폐기되고 에이전트는 계속 동작합니다 |
 | 리시버 로그에 `디코딩 실패 (fleet/registry)` | 정상입니다 — 레지스트리는 JSON, 리시버는 텔레메트리 envelope(CBOR) 디코더라서 나는 메시지 |
 | 단절 후 복구했는데 이벤트가 누락 | `agent.buffer.dir` 미설정 시 디스크 버퍼가 비활성입니다. 설정 후 재기동 |
 | bulk 파이프라인이 멈춤(`paused`) | ResourceGovernor가 CPU/RSS 임계 초과로 절제 중. 정상 보호 동작이며 임계 이하로 내려가면 재개 |

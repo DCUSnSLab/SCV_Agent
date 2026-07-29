@@ -15,6 +15,22 @@ class FieldPathError(Exception):
     pass
 
 
+def as_number(value: Any, path: str = "") -> Any:
+    """수치 비교용으로 필드 값을 정규화한다.
+
+    rclpy는 ROS의 ``octet``/``uint8`` 필드를 길이 1의 ``bytes``로 노출한다
+    (예: ``DiagnosticStatus.level``). 그대로 int와 비교하면 TypeError가 나므로
+    단일 바이트는 정수로 바꿔준다. 그 외 타입은 손대지 않는다.
+    """
+    if isinstance(value, (bytes, bytearray)):
+        if len(value) != 1:
+            raise TypeError(
+                f"필드 '{path}'는 길이 {len(value)}의 바이트열이라 수치 비교할 수 없습니다"
+            )
+        return value[0]
+    return value
+
+
 def get_field(obj: Any, path: str) -> Any:
     current = obj
     for part in path.split("."):
