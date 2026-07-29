@@ -8,10 +8,11 @@ ROS2 기반 실외 자율주행 로봇(캠퍼스 순찰·물류, 최종 50대 �
 |---|---|
 | 서버도 로봇도 없이 일단 돌려보고 싶다 | [2. 빠른 시작 — 서버 없이 5분](#2-빠른-시작--서버-없이-5분) |
 | 서버발 명령(다운링크)을 시험하고 싶다 | [3. 다운링크 시험 (서버 없이)](#3-다운링크-시험-서버-없이) |
-| 실제 로봇에 설치해서 상시 운영하고 싶다 | [5. 실제 로봇에 설치 (운영 배포)](#5-실제-로봇에-설치-운영-배포) |
+| **내 로봇 토픽을 어떻게 설정에 적는지 알고 싶다** | [5. 업링크 설정 작성 가이드](#5-업링크-설정-작성-가이드) |
+| 실제 로봇에 설치해서 상시 운영하고 싶다 | [6. 실제 로봇에 설치 (운영 배포)](#6-실제-로봇에-설치-운영-배포) |
 | 설정 항목을 전부 알고 싶다 | [docs/config_reference.md](docs/config_reference.md) |
 | 샘플러/코덱을 새로 만들고 싶다 | [docs/extending.md](docs/extending.md) |
-| 문제가 생겼다 | [7. 트러블슈팅](#7-트러블슈팅) |
+| 문제가 생겼다 | [8. 트러블슈팅](#8-트러블슈팅) |
 
 ## 배경
 
@@ -106,7 +107,7 @@ docker run -d --name fta-dev-broker -p 1883:1883 \
 ```
 
 확인: `mosquitto_sub -h localhost -t 'fleet/#' -v` 가 에러 없이 대기하면 정상.
-(개발 브로커는 평문·익명입니다. 운영 브로커는 TLS+인증 필수 — 5.4 참조)
+(개발 브로커는 평문·익명입니다. 운영 브로커는 TLS+인증 필수 — 6.4 참조)
 
 ### 2.2 빌드
 
@@ -244,9 +245,263 @@ ros2 topic echo /goal_pose geometry_msgs/msg/PoseStamped
 
 ---
 
-## 5. 실제 로봇에 설치 (운영 배포)
+## 5. 업링크 설정 작성 가이드
 
-### 5.1 배치 레이아웃
+업링크에서 **무엇을·얼마나 자주·어떻게 압축해서·얼마나 중요하게** 보낼지는 전부 YAML 한 파일로 정합니다.
+토픽명이나 전략이 소스코드에 들어가는 경로는 없습니다 — 새 데이터를 보내고 싶으면 파이프라인 항목만 추가하면 됩니다.
+
+### 5.1 파일의 3블록
+
+```yaml
+agent:      { ... }   # 이 로봇 자체 설정 (ID, 버퍼, 리소스 상한, heartbeat 주기)
+transport:  { ... }   # 어디로 보낼지 (브로커 주소, TLS)
+pipelines:  [ ... ]   # 무엇을 어떻게 보낼지 — 항목 1개 = 구독 1개
+```
+
+`pipelines` 항목 하나가 곧 **구독 1개 + 전송 정책 1벌**입니다. 처리 순서는 이렇습니다.
+
+```
+ROS2 토픽 ──구독──▶ [sampler: 보낼지 말지] ──▶ [codec: 어떻게 압축할지]
+                          ──▶ [priority: 큐에서 누가 먼저·MQTT QoS·대역폭 상한 적용 여부]
+                          ──▶ [msg_class: MQTT 채널 + 단절 시 보존 정책] ──▶ 브로커
+```
+
+### 5.2 파이프라인 키가 정하는 것
+
+| 키 | 필수 | 무엇을 정하는가 |
+|---|---|---|
+| `name` | ✅ | 파이프라인 이름. **MQTT 토픽의 마지막 조각**이 됩니다 (`fleet/{robot_id}/{msg_class}/{name}`). `[a-zA-Z0-9_]+`, 중복 불가 |
+| `topic` | ✅ | 구독할 ROS2 토픽 (`/`로 시작) |
+| `msg_type` | ✅ | `pkg/msg/Type`. 기동 시 typesupport 존재를 검증하고, 없으면 즉시 실패 |
+| `sampler` | ✅ | **보낼지 말지** — 아래 5.3 |
+| `codec` | ✅ | **어떤 형식으로 실을지** — 아래 5.3 |
+| `priority` | ✅ | 큐 우선순위 + MQTT QoS + 대역폭 상한 적용 여부 |
+| `msg_class` | (state) | MQTT 채널 + **단절 시 보존 정책** |
+| `qos` | (best_effort/volatile/depth 5) | 구독 QoS override. 발행자와 안 맞으면 아예 수신되지 않습니다 |
+| `enabled` | (true) | `false`면 구독 자체를 만들지 않음 (설정만 준비해두기) |
+
+한 토픽에 **파이프라인을 여러 개** 걸 수 있습니다 (예: 카메라를 저품질 주기 프리뷰 + 고품질 온디맨드 스냅샷으로 동시에 운용).
+
+### 5.3 4가지 선택
+
+**① sampler — 보낼지 말지**
+
+| 상황 | 선택 |
+|---|---|
+| 원래 주기가 필요 이상으로 빠르다 (odom 50Hz, IMU 200Hz…) | `rate` — 목표 Hz로 균등 다운샘플 |
+| 값이 거의 안 변한다 (배터리, 온도, 정지 중 위치) | `deadband` — 직전 전송값 대비 변화량이 `threshold` 이상일 때만 |
+| "그 순간"이 중요하다 (E-Stop, 모드 전환, 임계 통과) | `event` — 엣지 트리거. 즉시 전송(PASS_AND_FLUSH) |
+| 원래 드물게/한 번만 발행된다 (경로, 맵 메타) | `passthrough` — 전부 통과 |
+| 평소엔 필요 없고 요청 시에만 (스냅샷) | `on_demand` — 요청 1건당 다음 프레임 1장 |
+
+- `deadband`/`event`의 `field`는 점 구분 경로입니다: `pose.pose.position.x`, `status[0].level` (배열 인덱스 지원).
+- `event`의 `condition`: `changed`(값이 바뀔 때) / `eq·ne·gt·gte·lt·lte`(비교 조건이 **거짓→참으로 바뀔 때**만 1회). 비교 조건에는 `value` 필수.
+- `deadband`·`event` 모두 **첫 메시지는 통과**시킵니다 (서버가 초기 상태를 확보하도록).
+- `on_demand` 파이프라인에는 로컬 트리거 서비스가 자동 생성됩니다: `/fta/request_snapshot/{name}` (`std_srvs/srv/Trigger`). 서버발 트리거는 다운링크 레지스트리에 이 서비스를 등록하면 됩니다(3장).
+
+**② codec — 어떤 형식으로 실을지**
+
+| codec | 쓰는 곳 | 특징 |
+|---|---|---|
+| `cdr_zstd` | 일반 상태 토픽 **기본 권장** | CDR 원본 + zstd. 로컬 typesupport 불필요, 서버에서 rosbag 재기록 유리 |
+| `cbor` | 소형 메시지, 서버가 바로 필드를 읽어야 할 때 | msg→dict→CBOR. 수신측이 msg 패키지 없이 디코딩 가능. **로컬 typesupport 필요** |
+| `jpeg` | `sensor_msgs/Image`·`CompressedImage` | `quality`(1~100), `max_width`(0=원본) |
+| `voxel_zstd` | `sensor_msgs/PointCloud2` | `voxel_size`(m)로 다운샘플 후 zstd |
+
+**③ priority — 혼잡할 때 누가 살아남는가**
+
+| priority | MQTT QoS | 송신 큐 포화 시 | 대역폭 상한 |
+|---|---|---|---|
+| `critical` | **QoS1** (PUBACK 확인) | 항상 먼저 나가므로 정상 상황에선 쌓이지 않음. 그래도 가득 차면 오래된 것부터 드롭되고 `dropped.critical`로 집계 — 이 값이 증가하면 큐 길이·대역폭을 재검토 | **우회** (상한과 무관하게 전송) |
+| `high` | QoS0 | 같은 파이프라인의 대기 항목을 최신값으로 교체(conflation) | 적용 |
+| `normal` / `low` | QoS0 | 오래된 것부터 드롭 | 적용 |
+
+**④ msg_class — 끊겼을 때 어떻게 되는가**
+
+| msg_class | MQTT 채널 | 네트워크 단절 중 |
+|---|---|---|
+| `event` | `fleet/{id}/event/{name}` | **전량 디스크 버퍼에 보존** 후 복구 시 재전송 |
+| `state` | `fleet/{id}/state/{name}` | 파이프라인별 **최신값 1건만** 유지 |
+| `bulk` | `fleet/{id}/bulk/{name}` | **폐기** (복구 후 최신 데이터를 새로 보내는 편이 낫다) |
+
+> 디스크 버퍼는 `agent.buffer.dir`를 지정해야 동작합니다. 지정하지 않으면 단절 중 데이터는 사라집니다.
+
+### 5.4 데이터 유형별 작성 예시
+
+아래는 유형을 한 번에 보여주는 예시입니다(그대로 실행 검증한 구성 — 결과는 5.5).
+
+```yaml
+pipelines:
+  # ① 고주기 상태 — 주기만 줄인다 (50Hz → 2Hz)
+  - name: odom
+    topic: /odom
+    msg_type: nav_msgs/msg/Odometry
+    sampler: { type: rate, hz: 2 }
+    codec: { type: cdr_zstd }
+    priority: high
+    msg_class: state
+
+  # ② 초고주기 보조 상태 — 더 과감하게 줄인다 (100Hz → 5Hz)
+  - name: imu
+    topic: /imu/data
+    msg_type: sensor_msgs/msg/Imu
+    sampler: { type: rate, hz: 5 }
+    codec: { type: cdr_zstd }
+    priority: normal
+    msg_class: state
+
+  # ③ 느리게 변하는 값 — 변화량 기준 (SoC 0.5%p 이상 변할 때만)
+  - name: battery
+    topic: /battery
+    msg_type: sensor_msgs/msg/BatteryState
+    sampler: { type: deadband, field: percentage, threshold: 0.005 }
+    codec: { type: cbor }
+    priority: normal
+    msg_class: state
+
+  # ④ 위치 — 이동량 기준 (정차 중엔 안 보냄)
+  - name: gps
+    topic: /gps/fix
+    msg_type: sensor_msgs/msg/NavSatFix
+    sampler: { type: deadband, field: latitude, threshold: 0.00001 }
+    codec: { type: cbor }
+    priority: high
+    msg_class: state
+
+  # ⑤ 사건 — 상태가 바뀌는 순간만, 손실 불가
+  - name: estop
+    topic: /vehicle/estop
+    msg_type: std_msgs/msg/Bool
+    sampler: { type: event, field: data, condition: changed }
+    codec: { type: cbor }
+    priority: critical          # QoS1 + 대역폭 상한 우회
+    msg_class: event            # 단절 중에도 전량 보존
+
+  # ⑥ 임계 통과 — 수치 비교 엣지 트리거 (48V→46V로 떨어지는 순간 1회)
+  - name: batt_low
+    topic: /battery
+    msg_type: sensor_msgs/msg/BatteryState
+    sampler: { type: event, field: voltage, condition: lt, value: 46.0 }
+    codec: { type: cbor }
+    priority: critical
+    msg_class: event
+
+  # ⑦ 배열 인덱스 필드 경로 — 진단 레벨이 바뀔 때
+  - name: diag_change
+    topic: /diagnostics
+    msg_type: diagnostic_msgs/msg/DiagnosticArray
+    sampler: { type: event, field: "status[0].level", condition: changed }
+    codec: { type: cbor }
+    priority: high
+    msg_class: event
+
+  # ⑧ 비주기 1회 발행(latched) — QoS를 맞춰야 받을 수 있다
+  - name: plan
+    topic: /plan
+    msg_type: nav_msgs/msg/Path
+    sampler: { type: passthrough }
+    codec: { type: cbor }
+    priority: high
+    msg_class: state
+    qos: { reliability: reliable, durability: transient_local, depth: 1 }
+
+  # ⑨ 카메라 저빈도 프리뷰 — 화질을 낮춰 상시 감시용으로
+  - name: cam_preview
+    topic: /camera/image_raw
+    msg_type: sensor_msgs/msg/Image
+    sampler: { type: rate, hz: 0.5 }
+    codec: { type: jpeg, quality: 60, max_width: 640 }
+    priority: low
+    msg_class: bulk
+
+  # ⑩ 같은 토픽 + 온디맨드 고품질 — 한 토픽에 파이프라인 2개
+  - name: cam_snapshot
+    topic: /camera/image_raw
+    msg_type: sensor_msgs/msg/Image
+    sampler: { type: on_demand }      # /fta/request_snapshot/cam_snapshot 로 트리거
+    codec: { type: jpeg, quality: 90 }
+    priority: low
+    msg_class: bulk
+
+  # ⑪ LiDAR — 복셀 다운샘플 후 압축
+  - name: lidar_preview
+    topic: /velodyne_points
+    msg_type: sensor_msgs/msg/PointCloud2
+    sampler: { type: rate, hz: 0.2 }
+    codec: { type: voxel_zstd, voxel_size: 0.3 }
+    priority: low
+    msg_class: bulk
+
+  # ⑫ 준비만 해두고 꺼둔 파이프라인 (필요할 때 true로)
+  - name: lidar_snapshot
+    topic: /velodyne_points
+    msg_type: sensor_msgs/msg/PointCloud2
+    sampler: { type: on_demand }
+    codec: { type: voxel_zstd, voxel_size: 0.1 }
+    priority: low
+    msg_class: bulk
+    enabled: false
+```
+
+### 5.5 위 설정의 실측 동작
+
+합성 발행자로 20초간 돌린 결과입니다 (`in` = 구독한 원본 건수, `encoded` = 실제로 보낸 건수, 오류 0건).
+
+| # | 파이프라인 | 원본 | in → encoded | 수신측 실효 | 평균 payload | encoding |
+|---|---|---|---|---|---|---|
+| ① | odom | 50Hz | 1001 → 40 | 1.95 Hz | 60 B | cdr_zstd |
+| ② | imu | 100Hz | 2000 → 98 | 4.86 Hz | 49 B | cdr_zstd |
+| ③ | battery | 1Hz | 20 → 7 | — | 307 B | cbor |
+| ④ | gps | 1Hz | 20 → 2 | — | 249 B | cbor |
+| ⑤ | estop | 1Hz (5초 주기 토글) | 20 → 5 | — | 7 B | cbor |
+| ⑥ | batt_low | 1Hz | 20 → 2 | — | 307 B | cbor |
+| ⑦ | diag_change | 1Hz | 20 → 4 | — | 98 B | cbor |
+| ⑧ | plan | latched 1회 | 1 → 1 | — | 780 B | cbor |
+| ⑨ | cam_preview | 10Hz | 200 → 10 | 0.49 Hz | 1.4 KB | jpeg |
+| ⑩ | cam_snapshot | 10Hz | 200 → 1 | 서비스 호출 1회 | 1.9 KB | jpeg |
+| ⑪ | lidar_preview | 5Hz | 100 → 4 | 0.20 Hz | 20.9 KB | voxel_zstd |
+| ⑫ | lidar_snapshot | — | 비활성 (`enabled: false`) | — | — | — |
+
+`event` 계열(⑤⑥⑦)이 원본 20건 중 2~5건만 보낸 것이 핵심입니다 — **엣지에서만** 발화하므로 조건이 참으로 유지되는 동안 반복 전송하지 않습니다.
+실측 rosbag 기준 대역폭 감축률은 [M3 리포트](docs/reports/M3_bandwidth_report.md) 참조 (카메라 프리뷰 원본 대비 2.2%, LiDAR 1.6%).
+
+### 5.6 작성 절차
+
+```bash
+# 1) 무엇이 흐르는지 조사
+ros2 topic list
+ros2 topic info -v /odom          # 타입 + 발행자 QoS → msg_type / qos 에 반영
+ros2 topic hz /odom               # 원래 주기 → rate 를 얼마로 둘지
+ros2 topic bw /velodyne_points    # 대역폭 → bulk 로 뺄지
+
+# 2) 설정 작성 후 기동 검증 (스키마 오류는 즉시 실패, FR-6.3)
+ROBOT_ID=test FTA_BUFFER_DIR=/tmp/b ros2 run fta_agent agent --config my.yaml
+
+# 3) 실제 감축량 확인 — 10초마다 파이프라인별 in/encoded 통계가 로그에 찍힘
+#    수신측에서: 리시버 통계(로봇별 kbps)와 jsonl 의 payload_size
+ros2 run fta_tools test_receiver --out /tmp/check.jsonl
+```
+
+목표 대역폭을 넘으면 `rate`의 hz ↓ → `jpeg.quality`/`max_width` ↓ → `voxel_size` ↑ → 프리뷰 파이프라인 `enabled: false` 순으로 조입니다.
+마지막 안전장치로 `agent.resource.bandwidth_limit_kbps`를 걸면 `critical`을 제외한 전 파이프라인에 토큰버킷 상한이 적용됩니다.
+
+### 5.7 자주 하는 실수
+
+| 실수 | 결과 | 바로잡기 |
+|---|---|---|
+| `octet`/`uint8` 필드에 수치 비교 (`gte: 1`) | rclpy가 해당 필드를 `bytes`로 노출해 `TypeError` — 해당 메시지만 폐기되고 통계 `error` 증가 | `condition: changed`를 쓰거나 float/int 필드를 고를 것 (예: `DiagnosticStatus.level`은 octet) |
+| latched 토픽에 QoS 미지정 | 아무것도 수신되지 않음 (`in: 0`) | `qos: { reliability: reliable, durability: transient_local, depth: 1 }` |
+| 대용량 토픽에 `passthrough` | 대역폭 폭증 | `rate` + `jpeg`/`voxel_zstd`, `msg_class: bulk` |
+| bulk에 `critical` 지정 | 대역폭 상한을 우회해 링크를 잠식 | bulk는 `low` 고정, `critical`은 사건성 소형 메시지에만 |
+| 이벤트 토픽에 `msg_class: state` | 단절 중 최신값만 남아 **사건이 소실** | 사건은 반드시 `msg_class: event` |
+| `cbor` + 로컬에 없는 커스텀 타입 | 인코딩 불가 | `cdr_zstd` 사용 (typesupport 불필요) |
+| 파이프라인 `name` 중복·특수문자 | 기동 시 스키마 검증 실패 | `[a-zA-Z0-9_]+`, 유일하게 |
+
+---
+
+## 6. 실제 로봇에 설치 (운영 배포)
+
+### 6.1 배치 레이아웃
 
 `deploy/fta_agent.service`가 전제하는 구조입니다.
 
@@ -258,7 +513,7 @@ ros2 topic echo /goal_pose geometry_msgs/msg/PoseStamped
 /var/lib/fta/             DiskBuffer·감사 로그 (쓰기 권한 필요)
 ```
 
-### 5.2 설치
+### 6.2 설치
 
 ```bash
 # 0) 의존성 (1장) 설치 후
@@ -275,35 +530,10 @@ sudo useradd -r -s /usr/sbin/nologin fta 2>/dev/null || true
 sudo chown -R fta:fta /var/lib/fta /opt/fta
 ```
 
-### 5.3 이 로봇에 맞는 설정 작성
+### 6.3 이 로봇에 맞는 설정 배치
 
-`/opt/fta/config/fta.yaml`을 만듭니다. **토픽명·전송 정책은 전부 이 파일에서만 정의**합니다.
-
-먼저 실제 로봇에서 무엇이 흐르는지 조사하십시오.
-
-```bash
-ros2 topic list                      # 대상 후보
-ros2 topic info -v /odom             # 타입·QoS(신뢰성/내구성) — 설정의 msg_type/qos에 반영
-ros2 topic hz /odom                  # 원래 주기 → 얼마나 줄일지 판단
-ros2 topic bw /velodyne_points       # 대역폭 → bulk 여부 판단
-```
-
-데이터 유형별 권장 조합:
-
-| 데이터 | sampler | codec | priority | msg_class |
-|---|---|---|---|---|
-| 위치/속도 (고주기 상태) | `rate` (1~2Hz) | `cdr_zstd` | high | state |
-| IMU 등 보조 상태 | `rate` (5Hz) | `cdr_zstd` | normal | state |
-| 배터리·온도 (느린 변화) | `deadband` (field·threshold) | `cbor` | normal | state |
-| E-Stop·모드 전환 (사건) | `event` (`condition: changed`) | `cbor` | **critical** | **event** |
-| 비주기 1회 발행 (경로 등) | `passthrough` + `qos.durability: transient_local` | `cbor` | high | state |
-| 카메라 프리뷰 | `rate` (0.5Hz) | `jpeg` (quality/max_width) | low | bulk |
-| LiDAR 프리뷰 | `rate` (0.2Hz) | `voxel_zstd` | low | bulk |
-| 요청 시에만 필요한 고품질 | `on_demand` | `jpeg`/`voxel_zstd` | low | bulk |
-
-`msg_class`는 **단절 시 보존 정책**을 결정합니다 — `event`는 전량 디스크 보존, `state`는 최신값만, `bulk`는 폐기.
-
-최소 운영 템플릿 (전체 항목은 [docs/config_reference.md](docs/config_reference.md), 실전 예시는 `fta_agent/config/fta_bag_replay.yaml`):
+파이프라인 작성법은 [5장](#5-업링크-설정-작성-가이드)에 있습니다. 완성한 파일을 `/opt/fta/config/fta.yaml`로 두고,
+운영값(`agent`/`transport` 블록)을 로봇 환경에 맞춥니다.
 
 ```yaml
 agent:
@@ -326,6 +556,7 @@ transport:
     keepalive_sec: 30
 
 pipelines:
+  # 5장 참조 — 실전 예시: fta_agent/config/fta_bag_replay.yaml
   - name: odom
     topic: /odom
     msg_type: nav_msgs/msg/Odometry
@@ -333,14 +564,6 @@ pipelines:
     codec: { type: cdr_zstd }
     priority: high
     msg_class: state
-
-  - name: estop
-    topic: /vehicle/estop
-    msg_type: std_msgs/msg/Bool
-    sampler: { type: event, field: data, condition: changed }
-    codec: { type: cbor }
-    priority: critical
-    msg_class: event
 ```
 
 설정은 기동 시 스키마 검증되며, 오류가 있으면 원인을 찍고 **즉시 종료**합니다 (FR-6.3). 로봇에 올리기 전 검증:
@@ -350,7 +573,7 @@ source /opt/fta/install/setup.bash
 ROBOT_ID=test FTA_BUFFER_DIR=/tmp/b ros2 run fta_agent agent --config /opt/fta/config/fta.yaml
 ```
 
-### 5.4 프로비저닝 (로봇별 값·인증)
+### 6.4 프로비저닝 (로봇별 값·인증)
 
 ```bash
 sudo cp deploy/fta.env.example /etc/fta/fta.env
@@ -372,7 +595,7 @@ FTA_AUDIT_LOG=/var/lib/fta/audit.jsonl
 - `mqtt.tls: true`는 **시스템 CA 신뢰 저장소**를 사용합니다. 사설 CA라면 로봇 OS의 신뢰 저장소에 CA 인증서를 등록하십시오(`/usr/local/share/ca-certificates/` + `update-ca-certificates`).
 - 방화벽은 **아웃바운드만** 열면 됩니다 (에이전트는 서버에 접속하는 쪽입니다).
 
-### 5.5 systemd 등록
+### 6.5 systemd 등록
 
 ```bash
 sudo cp deploy/fta_agent.service /etc/systemd/system/
@@ -383,7 +606,7 @@ systemctl status fta_agent
 
 유닛이 제공하는 것: 크래시 시 자동 재시작(`Restart=always`, 5초), OS 레벨 방어선 `CPUQuota=20%` / `MemoryMax=512M`, 비특권 계정 실행, `--log-format json`.
 
-### 5.6 설치 후 점검
+### 6.6 설치 후 점검
 
 ```bash
 # 1) 기동 로그 (JSON 한 줄 = 1 이벤트)
@@ -402,7 +625,7 @@ sudo systemctl restart fta_agent && journalctl -u fta_agent -n 20
 
 체크리스트: `conn_state=connected` / 파이프라인 `error: 0` / `publish_failed: 0` / `queue.dropped` 미증가 / RSS가 `mem_limit_mb` 이내.
 
-### 5.7 업데이트 · 제거
+### 6.7 업데이트 · 제거
 
 ```bash
 # 업데이트
@@ -418,7 +641,7 @@ sudo rm /etc/systemd/system/fta_agent.service && sudo systemctl daemon-reload
 
 ---
 
-## 6. 운영 중 관측
+## 7. 운영 중 관측
 
 | 관측 지점 | 방법 | 내용 |
 |---|---|---|
@@ -433,7 +656,7 @@ MQTT 토픽 네임스페이스 전체(서버 계약)는 [docs/config_reference.m
 
 ---
 
-## 7. 트러블슈팅
+## 8. 트러블슈팅
 
 | 증상 | 원인 / 조치 |
 |---|---|
@@ -445,6 +668,7 @@ MQTT 토픽 네임스페이스 전체(서버 계약)는 [docs/config_reference.m
 | `MQTT 단절 (정상 상황으로 처리, 자동 재접속)`이 수 초 간격 반복 | client_id 중복 — 같은 `ROBOT_ID`의 에이전트가 이미 떠 있음. 잔존 프로세스 확인(2.5) 또는 로봇별 유일 ID 부여 |
 | 파이프라인 통계 `in: 0` | 토픽명 오타, DDS 도메인 불일치(`ROS_DOMAIN_ID`), 또는 발행자 미기동. `ros2 topic hz <topic>`으로 확인 |
 | 비주기 latched 토픽을 못 받음 | `qos: { durability: transient_local, reliability: reliable, depth: 1 }` 지정 필요 |
+| 특정 파이프라인 통계의 `error`가 계속 증가 | 대부분 `deadband`/`event`의 `field` 문제입니다 — 경로 오타이거나, `octet`/`uint8` 필드를 수치 비교한 경우(`bytes`와 int 비교 TypeError). 로그의 Traceback과 [5.7 자주 하는 실수](#57-자주-하는-실수) 참조. 해당 메시지만 폐기되고 에이전트는 계속 동작합니다 |
 | 리시버 로그에 `디코딩 실패 (fleet/registry)` | 정상입니다 — 레지스트리는 JSON, 리시버는 텔레메트리 envelope(CBOR) 디코더라서 나는 메시지 |
 | 단절 후 복구했는데 이벤트가 누락 | `agent.buffer.dir` 미설정 시 디스크 버퍼가 비활성입니다. 설정 후 재기동 |
 | bulk 파이프라인이 멈춤(`paused`) | ResourceGovernor가 CPU/RSS 임계 초과로 절제 중. 정상 보호 동작이며 임계 이하로 내려가면 재개 |
