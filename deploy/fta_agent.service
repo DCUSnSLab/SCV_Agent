@@ -1,0 +1,33 @@
+# FTA systemd 서비스 유닛 (NFR-1.3/1.4, NFR-3.3)
+#
+# 설치:
+#   sudo cp deploy/fta_agent.service /etc/systemd/system/
+#   sudo cp deploy/fta.env.example /etc/fta/fta.env   # 로봇별 값 수정
+#   sudo systemctl daemon-reload && sudo systemctl enable --now fta_agent
+[Unit]
+Description=FTA (Fleet Telemetry Agent)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 로봇별 프로비저닝 값 (ROBOT_ID, 브로커 주소, 인증) — 코드/유닛에 하드코딩 금지
+EnvironmentFile=/etc/fta/fta.env
+WorkingDirectory=/opt/fta
+ExecStart=/bin/bash -c 'source /opt/ros/humble/setup.bash && source /opt/fta/install/setup.bash && exec ros2 run fta_agent agent --config ${FTA_CONFIG} --log-format json'
+
+# 크래시 시 10초 내 자동 재시작 (NFR-3.3) — DiskBuffer가 재시작 후 복구됨
+Restart=always
+RestartSec=5
+
+# OS 레벨 리소스 방어선 (에이전트 자체 ResourceGovernor의 백스톱, NFR-1)
+CPUQuota=20%
+MemoryMax=512M
+
+# 에이전트는 루트 불필요
+User=fta
+Group=fta
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

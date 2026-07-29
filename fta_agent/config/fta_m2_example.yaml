@@ -1,0 +1,73 @@
+# FTA 파이프라인 설정 예시 (M2 — 다중 파이프라인, 샘플러 세트)
+#
+# 실측 데이터 인벤토리(docs/05 §2)의 유형별 전송 정책을 반영한 구성.
+# 실행 전: export ROBOT_ID=r01
+
+agent:
+  robot_id: ${ROBOT_ID}
+  queue_maxlen_per_priority: 256
+
+transport:
+  type: mqtt
+  mqtt:
+    host: localhost
+    port: 1883
+    tls: false
+    keepalive_sec: 30
+
+pipelines:
+  # 고주기 오도메트리 → 2Hz 다운샘플 (인벤토리: /odom_bae 50Hz)
+  - name: odom
+    topic: /odom
+    msg_type: nav_msgs/msg/Odometry
+    sampler: { type: rate, hz: 2 }
+    codec: { type: cbor }
+    priority: high
+    msg_class: state
+
+  # IMU → 5Hz 다운샘플 (인벤토리: /camera/camera/imu 200Hz)
+  - name: imu
+    topic: /imu
+    msg_type: sensor_msgs/msg/Imu
+    sampler: { type: rate, hz: 5 }
+    codec: { type: cbor }
+    priority: normal
+    msg_class: state
+
+  # 배터리 → SoC 0.5%p 변화 시에만 (deadband)
+  - name: battery
+    topic: /battery
+    msg_type: sensor_msgs/msg/BatteryState
+    sampler: { type: deadband, field: percentage, threshold: 0.005 }
+    codec: { type: cbor }
+    priority: normal
+    msg_class: state
+
+  # E-Stop 상태 변화 → 즉시 전송 (이벤트, 손실 불가)
+  - name: vehicle_estop
+    topic: /vehicle/estop
+    msg_type: std_msgs/msg/Bool
+    sampler: { type: event, field: data, condition: changed }
+    codec: { type: cbor }
+    priority: critical
+    msg_class: event
+
+  # 전역 계획 경로 — 비주기 1회 발행, latched 구독 (FR-1.5)
+  - name: planned_path
+    topic: /plan
+    msg_type: nav_msgs/msg/Path
+    sampler: { type: passthrough }
+    codec: { type: cbor }
+    priority: high
+    msg_class: state
+    qos: { reliability: reliable, durability: transient_local, depth: 1 }
+
+  # 카메라 스냅샷 — 온디맨드 (트리거 서비스는 M3)
+  - name: front_cam_snapshot
+    topic: /camera/image_raw
+    msg_type: sensor_msgs/msg/Image
+    sampler: { type: on_demand }
+    codec: { type: cbor }
+    priority: low
+    msg_class: bulk
+    enabled: false   # 기본 비활성 — M3에서 jpeg 코덱과 함께 활성화

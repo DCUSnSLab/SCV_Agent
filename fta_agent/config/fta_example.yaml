@@ -1,0 +1,26 @@
+# FTA 파이프라인 설정 예시 (M1 — /odom 단일 파이프라인)
+#
+# robot_id 등 환경 의존 값은 ${ENV} 로 주입한다 (하드코딩 금지).
+# 실행 전: export ROBOT_ID=r01
+
+agent:
+  robot_id: ${ROBOT_ID}
+  queue_maxlen_per_priority: 256
+
+transport:
+  type: mqtt
+  mqtt:
+    host: localhost        # 개발용 로컬 mosquitto. 운영은 서버 주소 + tls: true
+    port: 1883
+    tls: false
+    keepalive_sec: 30
+    # 인증: FTA_MQTT_USERNAME / FTA_MQTT_PASSWORD 환경변수로 주입
+
+pipelines:
+  - name: odom
+    topic: /odom
+    msg_type: nav_msgs/msg/Odometry
+    sampler: { type: passthrough }     # M2에서 rate: 2Hz 로 교체 예정
+    codec: { type: cbor }
+    priority: high
+    msg_class: state
