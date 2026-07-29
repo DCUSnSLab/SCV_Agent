@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from fta_agent.core.field_path import get_field
+from fta_agent.core.field_path import as_number, get_field
 from fta_agent.core.message_view import MessageView
 from fta_agent.core.registry import SAMPLER_REGISTRY
 from fta_agent.samplers.base import Decision, ISampler
@@ -23,7 +23,7 @@ class DeadbandSampler(ISampler):
         self._last_sent = None
 
     def decide(self, msg: MessageView, now: float) -> Decision:
-        value = float(get_field(msg.ros_msg(), self._field))
+        value = float(as_number(get_field(msg.ros_msg(), self._field), self._field))
         if self._last_sent is None or abs(value - self._last_sent) >= self._threshold:
             self._last_sent = value
             return Decision.PASS

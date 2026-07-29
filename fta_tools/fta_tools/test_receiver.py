@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import sys
 import threading
@@ -85,6 +86,16 @@ def main(argv=None) -> int:
         "--save-bulk", default="", metavar="DIR",
         help="bulk payload(jpeg 등)를 파일로 저장할 디렉토리 (기본: 저장 안 함)",
     )
+    parser.add_argument(
+        "--client-id", default="",
+        help="MQTT client_id (기본: fta-test-receiver-{topic 해시}). "
+             "같은 id로 --topic만 바꿔 재실행하면 이전 구독이 세션에 남아 중복 수신된다",
+    )
+    parser.add_argument(
+        "--clean-start", action="store_true",
+        help="영속 세션을 쓰지 않고 매번 새 세션으로 접속 (이전 구독·미수신 큐 폐기). "
+             "단절 중 QoS1 보관이 필요한 M4 시나리오에서는 쓰지 말 것",
+    )
     args = parser.parse_args(argv)
 
     # 로그 파일로 리다이렉트해도 통계가 실시간으로 보이도록 라인 버퍼링
@@ -95,13 +106,21 @@ def main(argv=None) -> int:
     counters = {"received": 0, "decode_error": 0}
 
     def on_connect(client, userdata, flags, reason_code, properties):
-        print(f"[receiver] 브로커 접속: {args.host}:{args.port}, 구독: {args.topic}")
+        print(f"[receiver] 브로커 접속: {args.host}:{args.port}, 구독: {args.topic} "
+              f"(client_id={client_id}, clean_start={bool(args.clean_start)})")
         client.subscribe(args.topic, qos=1)
 
     def on_message(client, userdata, m):
         now = time.time()
-        # 비-envelope 채널 (lwt, agent/health·registry_status 등 JSON 채널)
-        if "/sys/" in m.topic or "/agent/" in m.topic or "/cmd" in m.topic:
+        # 비-envelope 채널 (lwt, agent/health·registry_status, cmd, retained 레지스트리)
+        # — 전부 JSON이므로 envelope(CBOR) 디코더에 넣으면 안 된다
+        if (
+            "/sys/" in m.topic
+            or "/agent/" in m.topic
+            or "/cmd" in m.topic
+            or m.topic == "fleet/registry"
+            or m.topic.endswith("/registry")
+        ):
             print(f"[receiver] {m.topic}: {m.payload[:120]!r}")
             return
         try:
@@ -139,9 +158,15 @@ def main(argv=None) -> int:
         out_file.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
         stats.record(env["robot_id"], len(m.payload), now - env["stamp_agent"])
 
+    # client_id에 토픽 필터를 반영한다. 영속 세션은 구독도 함께 보관하므로,
+    # 고정 id로 --topic만 바꿔 재실행하면 옛 필터가 남아 같은 메시지를 여러 벌
+    # 받게 된다 (이슈 A-10 — 수신 건수·대역폭 측정이 배수로 부풀려짐).
+    topic_tag = hashlib.sha1(args.topic.encode()).hexdigest()[:8]
+    client_id = args.client_id or f"fta-test-receiver-{topic_tag}"
+
     client = mqtt.Client(
         callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-        client_id="fta-test-receiver",
+        client_id=client_id,
         protocol=mqtt.MQTTv5,
     )
     client.on_connect = on_connect
@@ -150,7 +175,11 @@ def main(argv=None) -> int:
     # 에이전트 DiskBuffer drain 시점과 리시버 재접속 시점의 경합 제거
     props = mqtt.Properties(mqtt.PacketTypes.CONNECT)
     props.SessionExpiryInterval = 3600
-    client.connect(args.host, args.port, clean_start=False, properties=props)
+    client.connect(
+        args.host, args.port,
+        clean_start=bool(args.clean_start),
+        properties=None if args.clean_start else props,
+    )
     client.reconnect_delay_set(min_delay=1, max_delay=5)
     client.loop_start()
 

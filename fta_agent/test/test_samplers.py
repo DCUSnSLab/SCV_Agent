@@ -93,6 +93,42 @@ def test_event_gte_edge_triggered():
     assert s.decide(FakeView(level=1), 5.0) is Decision.PASS_AND_FLUSH  # 재발생
 
 
+def test_event_compares_octet_field_as_number():
+    """octet/uint8 필드는 rclpy가 bytes로 노출한다 (예: DiagnosticStatus.level).
+
+    정규화가 없으면 `bytes >= int`에서 TypeError가 나고 해당 메시지가 통째로 폐기된다
+    (이슈 A-3 — 실제 종단 검증에서 진단 파이프라인 20건 전량 error 처리됨).
+    """
+    s = EventSampler(field="level", condition="gte", value=1)
+    assert s.decide(FakeView(level=b"\x00"), 0.0) is Decision.PASS_AND_FLUSH  # 초기 상태
+    assert s.decide(FakeView(level=b"\x00"), 1.0) is Decision.DROP
+    assert s.decide(FakeView(level=b"\x02"), 2.0) is Decision.PASS_AND_FLUSH  # WARN 상승 엣지
+    assert s.decide(FakeView(level=b"\x02"), 3.0) is Decision.DROP
+    assert s.decide(FakeView(level=b"\x00"), 4.0) is Decision.DROP
+
+
+def test_event_changed_works_with_octet_field():
+    s = EventSampler(field="level", condition="changed")
+    assert s.decide(FakeView(level=b"\x00"), 0.0) is Decision.PASS_AND_FLUSH
+    assert s.decide(FakeView(level=b"\x00"), 1.0) is Decision.DROP
+    assert s.decide(FakeView(level=b"\x01"), 2.0) is Decision.PASS_AND_FLUSH
+
+
+def test_deadband_accepts_octet_field():
+    """deadband도 같은 필드 타입을 만난다 — float() 변환이 bytes에서 실패한다."""
+    s = DeadbandSampler(field="level", threshold=1)
+    assert s.decide(FakeView(level=b"\x00"), 0.0) is Decision.PASS
+    assert s.decide(FakeView(level=b"\x00"), 1.0) is Decision.DROP
+    assert s.decide(FakeView(level=b"\x02"), 2.0) is Decision.PASS
+
+
+def test_event_multibyte_field_is_not_coerced():
+    """길이 1이 아닌 bytes는 수치가 아니므로 조용히 넘기지 않고 원인을 밝히며 실패한다."""
+    s = EventSampler(field="blob", condition="gte", value=1)
+    with pytest.raises(TypeError, match="바이트열"):
+        s.decide(FakeView(blob=b"\x00\x01"), 0.0)
+
+
 def test_event_requires_value_for_comparison():
     with pytest.raises(ValueError, match="value"):
         EventSampler(field="level", condition="gte")

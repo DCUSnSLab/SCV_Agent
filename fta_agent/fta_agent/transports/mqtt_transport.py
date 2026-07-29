@@ -34,6 +34,10 @@ class MqttTransport(ITransport):
         keepalive_sec: int = 30,
         client_id: str = "",
         ack_timeout_sec: float = 5.0,
+        ca_certs: str = "",
+        certfile: str = "",
+        keyfile: str = "",
+        tls_insecure: bool = False,
     ):
         self._robot_id = robot_id
         self._host = host
@@ -51,7 +55,22 @@ class MqttTransport(ITransport):
         if username:
             self._client.username_pw_set(username, os.environ.get("FTA_MQTT_PASSWORD"))
         if tls:
-            self._client.tls_set()
+            # 인자가 없으면 OS 신뢰저장소로 서버 인증서를 검증한다 (공인 CA 인증서용).
+            # 사설 CA는 ca_certs로, 클라이언트 인증서(mTLS)는 certfile/keyfile로 지정한다
+            # — 경로는 설정에 ${ENV}로 주입한다 (NFR-5.2/5.3).
+            if certfile and not keyfile:
+                raise ValueError("mqtt.certfile을 쓰려면 mqtt.keyfile도 필요합니다")
+            self._client.tls_set(
+                ca_certs=ca_certs or None,
+                certfile=certfile or None,
+                keyfile=keyfile or None,
+            )
+            if tls_insecure:
+                # 호스트명 검증 비활성 — IP 접속 등 테스트 목적 한정 (운영 금지)
+                logger.warning(
+                    "mqtt.tls_insecure=true — 인증서 호스트명 검증을 건너뜁니다 (운영 사용 금지)"
+                )
+                self._client.tls_insecure_set(True)
 
         self._client.will_set(
             f"fleet/{robot_id}/sys/lwt", payload=robot_id.encode(), qos=1, retain=False
