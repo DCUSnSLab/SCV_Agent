@@ -170,9 +170,9 @@ class FtaAgent(Node):
         for p in self.pipelines:
             logger.info("파이프라인 '%s' 통계: %s", p.name, p.stats)
         logger.info(
-            "업링크 통계: %s, 큐: %s, 드롭: %s, conflated: %s, 버퍼: %s, 연결: %s",
+            "업링크 통계: %s, 큐: %s, 드롭: %s, 포화보존: %s, conflated: %s, 버퍼: %s, 연결: %s",
             self.uplink.stats, self.out_queue.qsize(),
-            self.out_queue.dropped, self.out_queue.conflated,
+            self.out_queue.dropped, self.out_queue.preserved, self.out_queue.conflated,
             self.disk_buffer.pending() if self.disk_buffer else "없음",
             self.transport.state().value,
         )

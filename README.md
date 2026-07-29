@@ -312,15 +312,15 @@ ROS2 토픽 ──구독──▶ [sampler: 보낼지 말지] ──▶ [codec: 
 
 | priority | MQTT QoS | 송신 큐 포화 시 | 대역폭 상한 |
 |---|---|---|---|
-| `critical` | **QoS1** (PUBACK 확인) | 항상 먼저 나가므로 정상 상황에선 쌓이지 않음. 그래도 가득 차면 오래된 것부터 드롭되고 `dropped.critical`로 집계 — 이 값이 증가하면 큐 길이·대역폭을 재검토 | **우회** (상한과 무관하게 전송) |
-| `high` | QoS0 | 같은 파이프라인의 대기 항목을 최신값으로 교체(conflation) | 적용 |
+| `critical` | **QoS1** (PUBACK 확인) | 드롭하지 않음 — 밀려난 항목은 DiskBuffer로 이관되어 나중에 재전송(`preserved` 집계). 버퍼 미설정 시에만 드롭 | **우회** (상한과 무관하게 전송) |
+| `high` | QoS0 | 같은 파이프라인의 대기 항목을 최신값으로 교체(conflation). 교체 대상이 없으면 밀려남 — `msg_class: event`면 DiskBuffer로 이관 | 적용 |
 | `normal` / `low` | QoS0 | 오래된 것부터 드롭 | 적용 |
 
 **④ msg_class — 끊겼을 때 어떻게 되는가**
 
 | msg_class | MQTT 채널 | 네트워크 단절 중 |
 |---|---|---|
-| `event` | `fleet/{id}/event/{name}` | **전량 디스크 버퍼에 보존** 후 복구 시 재전송 |
+| `event` | `fleet/{id}/event/{name}` | **전량 디스크 버퍼에 보존** 후 복구 시 재전송 (큐 포화로 밀려날 때도 동일) |
 | `state` | `fleet/{id}/state/{name}` | 파이프라인별 **최신값 1건만** 유지 |
 | `bulk` | `fleet/{id}/bulk/{name}` | **폐기** (복구 후 최신 데이터를 새로 보내는 편이 낫다) |
 
