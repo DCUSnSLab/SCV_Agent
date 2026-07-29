@@ -12,7 +12,10 @@ REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO"
 source /opt/ros/humble/setup.bash
 source install/setup.bash
+source tests/integration/common.sh
 export ROS_DOMAIN_ID=42   # 동시 실행 중인 다른 테스트와 DDS 격리
+
+fta_preflight m4-test    # 잔존 프로세스가 있으면 시작 전에 중단 (A-5)
 
 rm -rf "$WORK"; mkdir -p "$WORK/buffer"
 echo "[m4-test] 산출물: $WORK, 차단 시간: ${CUT_SEC}s"
@@ -33,6 +36,9 @@ EOF
   BROKER_PID=$!
   sleep 1
 }
+
+cleanup() { kill $PUB_PID $AGENT_PID $RECV_PID $BROKER_PID 2>/dev/null; }
+trap cleanup EXIT        # 어떤 경로로 종료하든 자식 정리 (A-5)
 
 start_broker
 /usr/bin/python3 install/fta_tools/lib/fta_tools/test_receiver \
@@ -62,8 +68,9 @@ RECOVER_START=$(date +%s)
 # 재연결(백오프 최대 30s) + drain + 평시 복귀 확인
 sleep 40
 
-kill $PUB_PID $AGENT_PID $RECV_PID $BROKER_PID 2>/dev/null
+cleanup
 sleep 2
+fta_check_leftover
 
 echo "[m4-test] 결과 분석"
 /usr/bin/python3 - "$WORK" "$CUT_START" "$RECOVER_START" << 'EOF'
