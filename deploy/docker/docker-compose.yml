@@ -1,0 +1,94 @@
+name: fta-vehicles
+
+# 가상 차량 스택 — 컨테이너 1개 = 이동체 1대.
+#
+#   cd SCV_Agent && docker compose -f deploy/docker/docker-compose.yml up -d --build
+#
+# 기본은 자체 mosquitto 브로커로 단독 구동한다(수집 서버가 아직 없으므로).
+# 관제 콘솔 스택에 물릴 때는 README 3장 참조 — broker 를 빼고 EMQX 를 가리킨다.
+
+x-vehicle: &vehicle
+  build:
+    context: ../..                      # 저장소 루트 (fta_agent/·fta_tools/ 를 복사해야 함)
+    dockerfile: deploy/docker/Dockerfile
+  image: fta-vehicle:dev
+  depends_on:
+    broker:
+      condition: service_started
+  volumes:
+    # 506GB 원본 bag — 이미지에 넣지 않고 읽기 전용으로 마운트한다.
+    - ${FTA_BAG_ROOT:-${HOME}/data}:/data:ro
+  restart: unless-stopped
+
+x-vehicle-env: &vehicle-env
+  MQTT_HOST: broker
+  BAG_PATH: /data/rosbag2_2026_01_21-18_41_02
+  BAG_LOOP: "1"
+  BAG_RATE: "1.0"
+  BAG_START_DELAY: "5.0"
+  GPS_ORIGIN_LAT: "${GPS_ORIGIN_LAT:-35.9000}"    # ⚠️ 임시 가상 원점 — GPS bag 확보 시 교체
+  GPS_ORIGIN_LON: "${GPS_ORIGIN_LON:-128.8000}"
+  ODOM_TOPIC: /odom_bae
+
+services:
+  broker:
+    image: eclipse-mosquitto:2
+    container_name: fta-broker
+    ports:
+      # 호스트 1883 은 개발용 네이티브 mosquitto 가 이미 점유하고 있어 1884 로 공개한다.
+      # 컨테이너 사이 통신은 항상 1883 이므로 차량 설정은 영향받지 않는다.
+      - "${FTA_MQTT_PORT:-1884}:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - brokerdata:/mosquitto/data
+    restart: unless-stopped
+
+  # r01 — 풀스펙 순찰 로봇: 위치·속도·차대(배터리/조향)·IMU·카메라·LiDAR
+  r01:
+    <<: *vehicle
+    container_name: fta-r01
+    environment:
+      <<: *vehicle-env
+      ROBOT_ID: r01
+      FTA_CONFIG: /opt/fta/config/r01.yaml
+      BAG_TOPICS: >-
+        /odom_bae /hunter/velocity /hunter_status /vectornav/imu
+        /velodyne_points /camera/camera/color/image_raw
+      BAG_START_OFFSET: "0.0"
+      GPS_OFFSET_EAST: "0.0"
+      GPS_OFFSET_NORTH: "0.0"
+      GPS_HEADING: "0.0"
+    cpus: 2.0
+    mem_limit: 2g
+
+  # r02 — 경량 카메라 차량: LiDAR·IMU·차대 미탑재. 같은 bag 을 다른 시점부터 재생하고
+  # 원점을 남동쪽 150m 로 옮겨 지도상 별개 차량으로 보이게 한다.
+  r02:
+    <<: *vehicle
+    container_name: fta-r02
+    environment:
+      <<: *vehicle-env
+      ROBOT_ID: r02
+      FTA_CONFIG: /opt/fta/config/r02.yaml
+      BAG_TOPICS: "/odom_bae /hunter/velocity /camera/camera/color/image_raw"
+      BAG_START_OFFSET: "250.0"
+      GPS_OFFSET_EAST: "150.0"
+      GPS_OFFSET_NORTH: "-100.0"
+      GPS_HEADING: "90.0"
+    cpus: 1.0
+    mem_limit: 1g
+
+  # 수집 서버가 나오기 전까지의 수신 확인 수단. `--profile check` 로만 뜬다.
+  receiver:
+    <<: *vehicle
+    container_name: fta-receiver
+    profiles: ["check"]
+    environment:
+      ROBOT_ID: receiver
+      MQTT_HOST: broker
+    command: >-
+      ros2 run fta_tools test_receiver
+      --host broker --topic fleet/# --out /tmp/fta_received.jsonl --stats-interval 10
+
+volumes:
+  brokerdata:

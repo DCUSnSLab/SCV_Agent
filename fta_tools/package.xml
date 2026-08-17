@@ -7,6 +7,13 @@
   <maintainer email="marsberry@cu.ac.kr">soobin Jeon</maintainer>
   <license>MIT</license>
 
+  <!-- gps_shim (개발용 가상 차량 전용 — odom → NavSatFix 투영) -->
+  <depend>rclpy</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+
+  <test_depend>python3-pytest</test_depend>
+
   <export>
     <build_type>ament_python</build_type>
   </export>

@@ -1,0 +1,69 @@
+# r02 — 가상 차량: 경량 카메라 차량 (LiDAR·IMU 미탑재 차종을 흉내낸다)
+#
+# 같은 bag 을 재생하지만 파이프라인 구성·재생 시작점·GPS 원점 오프셋이 달라
+# 지도상 다른 위치에서 다른 궤적으로 움직인다. "센서 구성이 다른 차량"을 서버가
+# 어떻게 다루는지(없는 필드를 지어내지 않는지) 검증하는 대조군이다.
+#
+# 위치 소스(/odom_bae)를 가진 bag 이 현재 1종뿐이라 같은 bag 을 공유한다.
+# GPS 포함 bag 확보 시 이 파일의 topic 만 바꿔 교체한다.
+agent:
+  robot_id: ${ROBOT_ID}
+  queue_maxlen_per_priority: 128
+  buffer:
+    dir: /var/lib/fta/buffer
+    max_disk_mb: 256
+  resource:
+    bandwidth_limit_kbps: 500
+    cpu_limit_pct: 50
+    mem_limit_mb: 512
+  telemetry:
+    interval_sec: 5
+
+transport:
+  type: mqtt
+  mqtt:
+    host: ${MQTT_HOST}
+    port: 1883
+    tls: false
+    keepalive_sec: 30
+
+pipelines:
+  - name: gps
+    topic: /gps/fix
+    msg_type: sensor_msgs/msg/NavSatFix
+    sampler: { type: rate, hz: 1 }
+    codec: { type: cdr_zstd }
+    priority: high
+    msg_class: state
+
+  - name: odom
+    topic: /odom_bae
+    msg_type: nav_msgs/msg/Odometry
+    sampler: { type: rate, hz: 1 }
+    codec: { type: cdr_zstd }
+    priority: high
+    msg_class: state
+
+  - name: speed
+    topic: /hunter/velocity
+    msg_type: std_msgs/msg/Float64
+    sampler: { type: rate, hz: 1 }
+    codec: { type: cdr_zstd }
+    priority: high
+    msg_class: state
+
+  - name: front_cam_preview
+    topic: /camera/camera/color/image_raw
+    msg_type: sensor_msgs/msg/Image
+    sampler: { type: rate, hz: 1 }
+    codec: { type: jpeg, quality: 50, max_width: 480 }
+    priority: low
+    msg_class: bulk
+
+  - name: front_cam_snapshot
+    topic: /camera/camera/color/image_raw
+    msg_type: sensor_msgs/msg/Image
+    sampler: { type: on_demand }
+    codec: { type: jpeg, quality: 85 }
+    priority: low
+    msg_class: bulk

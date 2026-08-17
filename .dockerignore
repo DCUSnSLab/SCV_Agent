@@ -1,0 +1,14 @@
+# colcon 산출물 — 이미지 안에서 새로 빌드한다 (호스트 빌드가 섞이면 경로가 깨진다)
+build/
+install/
+log/
+
+.git/
+.dev/
+docs/
+tests/
+tools/
+*.pyc
+__pycache__/
+.pytest_cache/
+*.jsonl

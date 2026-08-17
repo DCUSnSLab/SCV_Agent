@@ -1,0 +1,105 @@
+# r01 — 가상 차량: 풀스펙 순찰 로봇 (AgileX Hunter 계열)
+#
+# 원본 bag: ~/data/rosbag2_2026_01_21-18_41_02 (56GB / 550s)
+#   위치는 /odom_bae → gps_shim 이 /gps/fix (NavSatFix) 로 투영해 공급한다.
+#   /hunter_status 는 hunter_msgs typesupport 가 필요하다 — 이미지에 빌드해 넣었으므로
+#   컨테이너에서는 정상 재생된다. 호스트에서 직접 돌리면 재생기가 이 토픽만 스킵한다(B-1).
+agent:
+  robot_id: ${ROBOT_ID}
+  queue_maxlen_per_priority: 256
+  buffer:
+    dir: /var/lib/fta/buffer
+    max_disk_mb: 512
+  resource:
+    # 컨테이너에서는 compose 의 cpus/mem_limit 가 OS 레벨 방어선(systemd 유닛 대체).
+    # 여기 값은 에이전트 자체 절제(ResourceGovernor) 임계다.
+    bandwidth_limit_kbps: 1000
+    cpu_limit_pct: 50
+    mem_limit_mb: 1024
+  telemetry:
+    interval_sec: 5
+
+transport:
+  type: mqtt
+  mqtt:
+    host: ${MQTT_HOST}
+    port: 1883
+    tls: false
+    keepalive_sec: 30
+
+pipelines:
+  # ── 상태 (위치·주행) ────────────────────────────────────────────────
+  - name: gps
+    topic: /gps/fix
+    msg_type: sensor_msgs/msg/NavSatFix
+    sampler: { type: rate, hz: 2 }
+    codec: { type: cdr_zstd }
+    priority: high
+    msg_class: state
+
+  - name: odom
+    topic: /odom_bae
+    msg_type: nav_msgs/msg/Odometry
+    sampler: { type: rate, hz: 2 }
+    codec: { type: cdr_zstd }
+    priority: high
+    msg_class: state
+
+  - name: speed
+    topic: /hunter/velocity
+    msg_type: std_msgs/msg/Float64
+    sampler: { type: rate, hz: 2 }
+    codec: { type: cdr_zstd }
+    priority: high
+    msg_class: state
+
+  # 차대 상태 — 배터리 전압·조향각·vehicle_state·error_code.
+  # 수신측은 hunter_msgs typesupport 없이도 CDR 을 직접 읽을 수 있다(레이아웃 고정).
+  - name: chassis
+    topic: /hunter_status
+    msg_type: hunter_msgs/msg/HunterStatus
+    sampler: { type: rate, hz: 2 }
+    codec: { type: cdr_zstd }
+    priority: high
+    msg_class: state
+
+  - name: imu
+    topic: /vectornav/imu
+    msg_type: sensor_msgs/msg/Imu
+    sampler: { type: rate, hz: 5 }
+    codec: { type: cdr_zstd }
+    priority: normal
+    msg_class: state
+
+  # ── Bulk (카메라·LiDAR) ─────────────────────────────────────────────
+  - name: front_cam_preview
+    topic: /camera/camera/color/image_raw
+    msg_type: sensor_msgs/msg/Image
+    sampler: { type: rate, hz: 0.5 }
+    codec: { type: jpeg, quality: 60, max_width: 640 }
+    priority: low
+    msg_class: bulk
+
+  - name: front_cam_snapshot
+    topic: /camera/camera/color/image_raw
+    msg_type: sensor_msgs/msg/Image
+    sampler: { type: on_demand }
+    codec: { type: jpeg, quality: 85 }
+    priority: low
+    msg_class: bulk
+
+  - name: lidar_preview
+    topic: /velodyne_points
+    msg_type: sensor_msgs/msg/PointCloud2
+    sampler: { type: rate, hz: 0.2 }
+    codec: { type: voxel_zstd, voxel_size: 0.2 }
+    priority: low
+    msg_class: bulk
+
+  - name: lidar_snapshot
+    topic: /velodyne_points
+    msg_type: sensor_msgs/msg/PointCloud2
+    sampler: { type: on_demand }
+    codec: { type: voxel_zstd, voxel_size: 0.1 }
+    priority: low
+    msg_class: bulk

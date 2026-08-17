@@ -21,6 +21,7 @@ setup(
         "console_scripts": [
             "test_receiver = fta_tools.test_receiver:main",
             "registry_tool = fta_tools.registry_tool:main",
+            "gps_shim = fta_tools.gps_shim:main",
         ],
     },
 )
