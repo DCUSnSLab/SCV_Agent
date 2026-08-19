@@ -13,11 +13,16 @@ agent:
     dir: /var/lib/fta/buffer
     max_disk_mb: 256
   resource:
-    bandwidth_limit_kbps: 500
+    bandwidth_limit_kbps: 2000   # cam 5Hz 반영 상향
     cpu_limit_pct: 50
     mem_limit_mb: 512
   telemetry:
     interval_sec: 5
+
+# 다운링크 — 서버 레지스트리 동기화 + 명령 수신 (검증 체인 NFR-7)
+downlink:
+  enabled: true
+  audit_log: /var/lib/fta/fta_audit.jsonl
 
 transport:
   type: mqtt
@@ -31,7 +36,7 @@ pipelines:
   - name: gps
     topic: /gps/fix
     msg_type: sensor_msgs/msg/NavSatFix
-    sampler: { type: rate, hz: 1 }
+    sampler: { type: rate, hz: 5 }
     codec: { type: cdr_zstd }
     priority: high
     msg_class: state
@@ -39,7 +44,7 @@ pipelines:
   - name: odom
     topic: /odom_bae
     msg_type: nav_msgs/msg/Odometry
-    sampler: { type: rate, hz: 1 }
+    sampler: { type: rate, hz: 10 }
     codec: { type: cdr_zstd }
     priority: high
     msg_class: state
@@ -47,7 +52,7 @@ pipelines:
   - name: speed
     topic: /hunter/velocity
     msg_type: std_msgs/msg/Float64
-    sampler: { type: rate, hz: 1 }
+    sampler: { type: rate, hz: 10 }
     codec: { type: cdr_zstd }
     priority: high
     msg_class: state
@@ -55,7 +60,7 @@ pipelines:
   - name: front_cam_preview
     topic: /camera/camera/color/image_raw
     msg_type: sensor_msgs/msg/Image
-    sampler: { type: rate, hz: 1 }
+    sampler: { type: rate, hz: 5 }
     codec: { type: jpeg, quality: 50, max_width: 480 }
     priority: low
     msg_class: bulk

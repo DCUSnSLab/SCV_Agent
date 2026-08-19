@@ -1,0 +1,27 @@
+# 관제 콘솔 스택(autodrive-ops)에 붙일 때 쓰는 override — 자체 브로커를 끄고
+# 콘솔의 EMQX 에 컨테이너 네트워크로 직접 조인한다 (FTA 설정은 포트 1883 고정이므로
+# 호스트 공개 포트가 아니라 브로커 컨테이너 이름으로 접근한다).
+#
+#   cd SCV_Agent
+#   docker compose -f deploy/docker/docker-compose.yml \
+#                  -f deploy/docker/docker-compose.console.yml up -d r01 r02
+#
+# 전제: 콘솔 스택이 먼저 떠 있어야 한다 (네트워크 autodrive-ops_default 존재).
+services:
+  broker:
+    profiles: ["disabled"]
+  r01:
+    depends_on: !reset []
+    environment:
+      MQTT_HOST: emqx
+    networks: [autodrive]
+  r02:
+    depends_on: !reset []
+    environment:
+      MQTT_HOST: emqx
+    networks: [autodrive]
+
+networks:
+  autodrive:
+    external: true
+    name: autodrive-ops_default
