@@ -13,11 +13,16 @@ agent:
   resource:
     # 컨테이너에서는 compose 의 cpus/mem_limit 가 OS 레벨 방어선(systemd 유닛 대체).
     # 여기 값은 에이전트 자체 절제(ResourceGovernor) 임계다.
-    bandwidth_limit_kbps: 1000
+    bandwidth_limit_kbps: 8000   # cam5Hz+lidar5Hz 실측 반영 상향
     cpu_limit_pct: 50
     mem_limit_mb: 1024
   telemetry:
     interval_sec: 5
+
+# 다운링크 — 서버 레지스트리 동기화 + 명령 수신 (검증 체인 NFR-7)
+downlink:
+  enabled: true
+  audit_log: /var/lib/fta/fta_audit.jsonl
 
 transport:
   type: mqtt
@@ -32,7 +37,7 @@ pipelines:
   - name: gps
     topic: /gps/fix
     msg_type: sensor_msgs/msg/NavSatFix
-    sampler: { type: rate, hz: 2 }
+    sampler: { type: rate, hz: 5 }
     codec: { type: cdr_zstd }
     priority: high
     msg_class: state
@@ -40,7 +45,7 @@ pipelines:
   - name: odom
     topic: /odom_bae
     msg_type: nav_msgs/msg/Odometry
-    sampler: { type: rate, hz: 2 }
+    sampler: { type: rate, hz: 10 }
     codec: { type: cdr_zstd }
     priority: high
     msg_class: state
@@ -48,7 +53,7 @@ pipelines:
   - name: speed
     topic: /hunter/velocity
     msg_type: std_msgs/msg/Float64
-    sampler: { type: rate, hz: 2 }
+    sampler: { type: rate, hz: 10 }
     codec: { type: cdr_zstd }
     priority: high
     msg_class: state
@@ -58,7 +63,7 @@ pipelines:
   - name: chassis
     topic: /hunter_status
     msg_type: hunter_msgs/msg/HunterStatus
-    sampler: { type: rate, hz: 2 }
+    sampler: { type: rate, hz: 10 }
     codec: { type: cdr_zstd }
     priority: high
     msg_class: state
@@ -66,7 +71,7 @@ pipelines:
   - name: imu
     topic: /vectornav/imu
     msg_type: sensor_msgs/msg/Imu
-    sampler: { type: rate, hz: 5 }
+    sampler: { type: rate, hz: 10 }
     codec: { type: cdr_zstd }
     priority: normal
     msg_class: state
@@ -75,7 +80,7 @@ pipelines:
   - name: front_cam_preview
     topic: /camera/camera/color/image_raw
     msg_type: sensor_msgs/msg/Image
-    sampler: { type: rate, hz: 0.5 }
+    sampler: { type: rate, hz: 5 }
     codec: { type: jpeg, quality: 60, max_width: 640 }
     priority: low
     msg_class: bulk
@@ -91,7 +96,7 @@ pipelines:
   - name: lidar_preview
     topic: /velodyne_points
     msg_type: sensor_msgs/msg/PointCloud2
-    sampler: { type: rate, hz: 0.2 }
+    sampler: { type: rate, hz: 5 }
     codec: { type: voxel_zstd, voxel_size: 0.2 }
     priority: low
     msg_class: bulk

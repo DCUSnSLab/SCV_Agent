@@ -26,6 +26,7 @@ x-vehicle-env: &vehicle-env
   BAG_LOOP: "1"
   BAG_RATE: "1.0"
   BAG_START_DELAY: "5.0"
+  GPS_HZ: "10"                                    # 샘플러 5Hz 가 소스 경계에서 놓치지 않게 2배
   GPS_ORIGIN_LAT: "${GPS_ORIGIN_LAT:-35.9000}"    # ⚠️ 임시 가상 원점 — GPS bag 확보 시 교체
   GPS_ORIGIN_LON: "${GPS_ORIGIN_LON:-128.8000}"
   ODOM_TOPIC: /odom_bae
