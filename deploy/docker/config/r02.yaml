@@ -1,21 +1,19 @@
-# r02 — 가상 차량: 경량 카메라 차량 (LiDAR·IMU 미탑재 차종을 흉내낸다)
+# r02 — 가상 차량: 실주행 필드런 (field_20260820_mppi_run2, 8/20 MPPI 주행 691s)
 #
-# 같은 bag 을 재생하지만 파이프라인 구성·재생 시작점·GPS 원점 오프셋이 달라
-# 지도상 다른 위치에서 다른 궤적으로 움직인다. "센서 구성이 다른 차량"을 서버가
-# 어떻게 다루는지(없는 필드를 지어내지 않는지) 검증하는 대조군이다.
-#
-# 위치 소스(/odom_bae)를 가진 bag 이 현재 1종뿐이라 같은 bag 을 공유한다.
-# GPS 포함 bag 확보 시 이 파일의 topic 만 바꿔 교체한다.
+# 이 bag 에는 **실측 GPS**(/ublox_gps_node/fix)가 있어 gps_shim 없이 지도에 실제
+# 주행 궤적이 그려진다 (r01 은 여전히 shim 가상 원점 — 대조 유지).
+# LaserScan 전후방·depth 카메라·IMU 100Hz 포함 — SCAN 패널·플롯 위젯의 실데이터 소스.
+# teleop_rover_msgs 등 커스텀 타입 토픽은 재생 대상에서 제외(BAG_TOPICS).
 agent:
   robot_id: ${ROBOT_ID}
-  queue_maxlen_per_priority: 128
+  queue_maxlen_per_priority: 256
   buffer:
     dir: /var/lib/fta/buffer
-    max_disk_mb: 256
+    max_disk_mb: 512
   resource:
-    bandwidth_limit_kbps: 2000   # cam 5Hz 반영 상향
+    bandwidth_limit_kbps: 8000   # cam 2ch 5Hz + lidar 5Hz + scan 2ch
     cpu_limit_pct: 50
-    mem_limit_mb: 512
+    mem_limit_mb: 1024
   telemetry:
     interval_sec: 5
 
@@ -33,17 +31,26 @@ transport:
     keepalive_sec: 30
 
 pipelines:
+  # ── 상태 ──────────────────────────────────────────────────────────
   - name: gps
-    topic: /gps/fix
+    topic: /ublox_gps_node/fix          # 실측 GPS — shim 아님
     msg_type: sensor_msgs/msg/NavSatFix
     sampler: { type: rate, hz: 5 }
     codec: { type: cdr_zstd }
     priority: high
     msg_class: state
 
-  - name: odom
-    topic: /odom_bae
-    msg_type: nav_msgs/msg/Odometry
+  - name: gps_vel
+    topic: /ublox_gps_node/fix_velocity
+    msg_type: geometry_msgs/msg/TwistWithCovarianceStamped
+    sampler: { type: rate, hz: 5 }
+    codec: { type: cdr_zstd }
+    priority: normal
+    msg_class: state
+
+  - name: chassis
+    topic: /hunter_status               # 배터리 전압·조향각
+    msg_type: hunter_msgs/msg/HunterStatus
     sampler: { type: rate, hz: 10 }
     codec: { type: cdr_zstd }
     priority: high
@@ -57,11 +64,69 @@ pipelines:
     priority: high
     msg_class: state
 
+  - name: steer
+    topic: /current_steer_angle
+    msg_type: std_msgs/msg/Float64
+    sampler: { type: rate, hz: 10 }
+    codec: { type: cdr_zstd }
+    priority: normal
+    msg_class: state
+
+  - name: odom
+    topic: /odometry/global
+    msg_type: nav_msgs/msg/Odometry
+    sampler: { type: rate, hz: 10 }
+    codec: { type: cdr_zstd }
+    priority: high
+    msg_class: state
+
+  - name: imu
+    topic: /vectornav/imu               # 100Hz 원본 — 플롯 위젯용 10Hz 샘플
+    msg_type: sensor_msgs/msg/Imu
+    sampler: { type: rate, hz: 10 }
+    codec: { type: cdr_zstd }
+    priority: normal
+    msg_class: state
+
+  # ── 스캔 (SCAN FRONT/REAR 패널) ───────────────────────────────────
+  - name: front_scan
+    topic: /front/scan
+    msg_type: sensor_msgs/msg/LaserScan
+    sampler: { type: rate, hz: 5 }
+    codec: { type: cdr_zstd }
+    priority: low
+    msg_class: state
+
+  - name: rear_scan
+    topic: /rear/scan
+    msg_type: sensor_msgs/msg/LaserScan
+    sampler: { type: rate, hz: 5 }
+    codec: { type: cdr_zstd }
+    priority: low
+    msg_class: state
+
+  # ── 미디어 ────────────────────────────────────────────────────────
   - name: front_cam_preview
     topic: /camera/camera/color/image_raw
     msg_type: sensor_msgs/msg/Image
     sampler: { type: rate, hz: 5 }
-    codec: { type: jpeg, quality: 50, max_width: 480 }
+    codec: { type: jpeg, quality: 60, max_width: 640 }
+    priority: low
+    msg_class: bulk
+
+  - name: depth_preview
+    topic: /camera/camera/depth/image_rect_raw
+    msg_type: sensor_msgs/msg/Image
+    sampler: { type: rate, hz: 5 }
+    codec: { type: jpeg, quality: 60, max_width: 640 }
+    priority: low
+    msg_class: bulk
+
+  - name: lidar_preview
+    topic: /velodyne_points
+    msg_type: sensor_msgs/msg/PointCloud2
+    sampler: { type: rate, hz: 5 }
+    codec: { type: voxel_zstd, voxel_size: 0.2 }
     priority: low
     msg_class: bulk
 

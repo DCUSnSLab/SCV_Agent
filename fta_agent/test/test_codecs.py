@@ -69,11 +69,11 @@ def test_jpeg_rejects_unknown_encoding():
 
     msg = Image()
     msg.height = msg.width = 4
-    msg.encoding = "32FC1"
+    msg.encoding = "bayer_rggb8"
     msg.data = bytes(4 * 4 * 4)
     raw = rclpy_serialization.serialize_message(msg)
     view = MessageView(raw, "/depth", "sensor_msgs/msg/Image", Image)
-    with pytest.raises(ValueError, match="32FC1"):
+    with pytest.raises(ValueError, match="bayer_rggb8"):
         JpegCodec().encode(view)
 
 
@@ -97,3 +97,27 @@ def test_voxel_zstd_downsamples():
     assert meta["count"] == 10  # 5m 범위 / 0.5m 복셀
     pts = np.frombuffer(meta["data"], np.float32).reshape(-1, 3)
     assert len(pts) == meta["count"]
+
+
+def test_jpeg_depth_16uc1():
+    """깊이(16UC1, mm) → 표시용 JPEG — 가까울수록 밝고, 무측정(0)은 검정."""
+    import cv2
+    import numpy as np
+
+    from fta_agent.codecs.jpeg import JpegCodec
+
+    class _Depth:
+        encoding = "16UC1"
+        height, width = 4, 4
+        # 1m(밝음), 9m(어두움), 0(무측정=검정)
+        data = np.array([[1000, 9000, 0, 1000]] * 4, dtype=np.uint16).tobytes()
+
+    class _View:
+        def ros_msg(self):
+            return _Depth()
+
+    out = JpegCodec(quality=90).encode(_View())
+    assert out.encoding == "jpeg" and out.data[:2] == b"\xff\xd8"
+    img = cv2.imdecode(np.frombuffer(out.data, np.uint8), cv2.IMREAD_GRAYSCALE)
+    assert img[0, 0] > img[0, 1]          # 1m 가 9m 보다 밝다
+    assert img[0, 2] <= 8                 # 무측정 ≈ 검정 (JPEG 손실 여유)

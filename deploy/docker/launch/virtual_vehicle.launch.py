@@ -59,7 +59,9 @@ def generate_launch_description() -> LaunchDescription:
         ],
     )
 
-    actions = [gps_shim, agent]
+    # 실측 GPS 가 있는 bag(GPS_SHIM=0)은 shim 을 띄우지 않는다 — 합성과 실측이 섞이면 안 된다
+    actions = ([agent] if _env("GPS_SHIM", "1") in ("0", "false", "False")
+               else [gps_shim, agent])
 
     if bag_path:
         cmd = ["ros2", "bag", "play", bag_path,
