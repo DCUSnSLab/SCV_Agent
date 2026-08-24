@@ -62,8 +62,8 @@ services:
     cpus: 2.0
     mem_limit: 2g
 
-  # r02 — 경량 카메라 차량: LiDAR·IMU·차대 미탑재. 같은 bag 을 다른 시점부터 재생하고
-  # 원점을 남동쪽 150m 로 옮겨 지도상 별개 차량으로 보이게 한다.
+  # r02 — 실주행 필드런 차량 (field_20260820_mppi_run2): **실측 GPS 포함** —
+  # gps_shim 불필요(GPS_SHIM=0). 스캔 전후방·depth·IMU 100Hz 실데이터.
   r02:
     <<: *vehicle
     container_name: fta-r02
@@ -71,13 +71,16 @@ services:
       <<: *vehicle-env
       ROBOT_ID: r02
       FTA_CONFIG: /opt/fta/config/r02.yaml
-      BAG_TOPICS: "/odom_bae /hunter/velocity /camera/camera/color/image_raw"
-      BAG_START_OFFSET: "250.0"
-      GPS_OFFSET_EAST: "150.0"
-      GPS_OFFSET_NORTH: "-100.0"
-      GPS_HEADING: "90.0"
-    cpus: 1.0
-    mem_limit: 1g
+      BAG_PATH: /data/field_20260820_mppi_run2
+      GPS_SHIM: "0"                     # bag 에 실측 GPS(/ublox_gps_node/fix) 있음
+      BAG_TOPICS: >-
+        /ublox_gps_node/fix /ublox_gps_node/fix_velocity /hunter_status
+        /hunter/velocity /current_steer_angle /odometry/global /vectornav/imu
+        /front/scan /rear/scan /camera/camera/color/image_raw
+        /camera/camera/depth/image_rect_raw /velodyne_points
+      BAG_START_OFFSET: "215.0"   # 주행 시작 t+217.9s(실측: /hunter/velocity) — 셋업 정차 3분38초 스킵
+    cpus: 2.0
+    mem_limit: 2g
 
   # 수집 서버가 나오기 전까지의 수신 확인 수단. `--profile check` 로만 뜬다.
   receiver:
