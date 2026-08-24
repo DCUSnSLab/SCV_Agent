@@ -11,7 +11,7 @@ agent:
     dir: /var/lib/fta/buffer
     max_disk_mb: 512
   resource:
-    bandwidth_limit_kbps: 8000   # cam 2ch 5Hz + lidar 5Hz + scan 2ch
+    bandwidth_limit_kbps: 10000  # 요구 ~2Mbps 대비 5배 여유 — 5G 음영 순간에도 무적체
     cpu_limit_pct: 50
     mem_limit_mb: 1024
   telemetry:
@@ -122,11 +122,13 @@ pipelines:
     priority: low
     msg_class: bulk
 
+  # 필드런 velodyne 은 실외 밀도가 높아 voxel 0.2 로도 프레임 253KB(7.3Mbps@5Hz) —
+  # 대역 포화로 low 큐 6.5s 적체 실측. 프리뷰 용도에 맞게 다이어트(0.35/3Hz ≈ 0.7Mbps).
   - name: lidar_preview
     topic: /velodyne_points
     msg_type: sensor_msgs/msg/PointCloud2
-    sampler: { type: rate, hz: 5 }
-    codec: { type: voxel_zstd, voxel_size: 0.2 }
+    sampler: { type: rate, hz: 3 }
+    codec: { type: voxel_zstd, voxel_size: 0.35 }
     priority: low
     msg_class: bulk
 
