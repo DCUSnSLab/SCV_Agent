@@ -78,7 +78,7 @@ services:
         /hunter/velocity /current_steer_angle /odometry/global /vectornav/imu
         /front/scan /rear/scan /camera/camera/color/image_raw
         /camera/camera/depth/image_rect_raw /velodyne_points
-      BAG_START_OFFSET: "0.0"
+      BAG_START_OFFSET: "215.0"   # 주행 시작 t+217.9s(실측: /hunter/velocity) — 셋업 정차 3분38초 스킵
     cpus: 2.0
     mem_limit: 2g
 
