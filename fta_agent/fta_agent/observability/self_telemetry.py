@@ -9,21 +9,37 @@ from __future__ import annotations
 
 import json
 import time
+from typing import Optional
 
 import psutil
 from std_msgs.msg import String
 
+from fta_agent.observability.host_status import HostStatusCollector, logging_status
 from fta_agent.transports.base import Reliability
 
 
 class SelfTelemetry:
-    def __init__(self, agent, interval_sec: float = 10.0):
+    def __init__(self, agent, interval_sec: float = 10.0,
+                 logging_topic: Optional[str] = None, workspace_dir: Optional[str] = None):
         self._agent = agent
         self._proc = psutil.Process()
         self._proc.cpu_percent()  # 첫 호출 기준점
         self._started = time.time()
         self._local_pub = agent.create_publisher(String, "/fta/health", 1)
+        self._host = HostStatusCollector(interval_sec, workspace_dir)
+        self._host.start()
+        # scv_logger 녹화 상태 — 콜백은 원문과 수신 시각만 보관 (불변 조건 3)
+        self._logging_topic = logging_topic
+        self._logging_msg: Optional[tuple] = None
+        if logging_topic:
+            agent.create_subscription(String, logging_topic, self._on_logging, 1)
         self._timer = agent.create_timer(interval_sec, self.publish)
+
+    def stop(self) -> None:
+        self._host.stop()
+
+    def _on_logging(self, msg: String) -> None:
+        self._logging_msg = (msg.data, time.monotonic())
 
     def build_health(self) -> dict:
         a = self._agent
@@ -49,7 +65,15 @@ class SelfTelemetry:
                 "rss_mb": round(self._proc.memory_info().rss / 1024 / 1024, 1),
                 "threads": self._proc.num_threads(),
             },
+            **self._host.snapshot(),  # host / net / time / version
+            **({"logging": self._logging_block()} if self._logging_topic else {}),
         }
+
+    def _logging_block(self) -> dict:
+        if self._logging_msg is None:
+            return logging_status(None, None)
+        raw, at = self._logging_msg
+        return logging_status(raw, time.monotonic() - at)
 
     def publish(self) -> None:
         health = self.build_health()

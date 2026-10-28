@@ -84,3 +84,13 @@ def test_duplicate_pipeline_name_fails(tmp_path, monkeypatch):
 def test_missing_file_fails():
     with pytest.raises(ConfigError, match="설정 파일"):
         load_config("/nonexistent/path.yaml")
+
+
+def test_telemetry_logging_and_workspace_keys(tmp_path, monkeypatch):
+    monkeypatch.setenv("ROBOT_ID", "r01")
+    cfg = VALID.replace("robot_id: ${ROBOT_ID}", "robot_id: ${ROBOT_ID}\n  telemetry: "
+                        "{ interval_sec: 5, logging_topic: /scv_logger/health, workspace_dir: /ws }")
+    assert load_config(write(tmp_path, cfg))["agent"]["telemetry"]["logging_topic"] == "/scv_logger/health"
+    bad = cfg.replace("/scv_logger/health", "scv_logger/health")
+    with pytest.raises(ConfigError):
+        load_config(write(tmp_path, bad))

@@ -115,8 +115,12 @@ class FtaAgent(Node):
             logger.info("다운링크 활성 — 실행 가능 대상은 레지스트리 동기화로만 결정됨")
 
         # 관측성 (FR-7) — health 발행 + 리소스 감시·절제
+        tel_cfg = cfg["agent"].get("telemetry", {})
         self.telemetry = SelfTelemetry(
-            self, interval_sec=cfg["agent"].get("telemetry", {}).get("interval_sec", 10.0)
+            self,
+            interval_sec=tel_cfg.get("interval_sec", 10.0),
+            logging_topic=tel_cfg.get("logging_topic"),
+            workspace_dir=tel_cfg.get("workspace_dir"),
         )
         res_cfg = cfg["agent"].get("resource", {})
         self.governor = (
@@ -157,6 +161,7 @@ class FtaAgent(Node):
         )
 
     def shutdown(self) -> None:
+        self.telemetry.stop()
         for p in self.pipelines:
             p.stop()
         if self.command_executor:

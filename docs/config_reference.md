@@ -18,6 +18,8 @@
 | `resource.cpu_limit_pct` | | 20 | ResourceGovernor CPU 임계 — 초과 시 bulk 일시정지 (NFR-1.3) |
 | `resource.mem_limit_mb` | | 512 | ResourceGovernor RSS 임계 (NFR-1.4) |
 | `telemetry.interval_sec` | | 10 | health 발행 주기 (`fleet/{id}/agent/health` + `/fta/health`) |
+| `telemetry.logging_topic` | | (없음) | scv_logger 감시 노드의 health 토픽 (예: `/scv_logger/health`). 지정하면 health에 `logging` 블록이 실린다 |
+| `telemetry.workspace_dir` | | (없음) | 차량 SW 워크스페이스 경로 (예: SCV). 지정하면 `version.vehicle_sw`·`version.git`을 채운다 |
 
 ## transport
 
@@ -102,3 +104,19 @@ fleet/{robot_id}/registry                retained  로봇별 override
 
 서버측 브로커 요구사항: persistence 활성 + 인제스천 서비스는 내구 세션
 (clean_start=false) 사용 — 에이전트 재전송(drain)과 서버 재접속의 경합 방지.
+
+## health JSON (`fleet/{id}/agent/health`, `/fta/health`)
+
+기존 키(`uptime_sec`, `conn_state`, `pipelines`, `uplink`, `queue`, `buffer`, `downlink`,
+`resource`)는 그대로이고, 아래 블록이 추가된다. 값을 얻지 못한 항목은 `null`.
+
+| 블록 | 필드 | 출처 |
+|---|---|---|
+| `host` | `cpu_pct`, `mem_pct`, `gpu_pct`, `temp_c`(CPU), `disk_free_gb`(`/`) | psutil, nvidia-smi(x86) / tegrastats(Jetson) |
+| `net` | `iface`(기본 경로), `rssi_dbm` | `/proc/net/route`, ModemManager. **USB 모뎀이 없으면 `rssi_dbm` 키가 없다** |
+| `time` | `synced`, `offset_ms`, `source` | `chronyc tracking`. 없으면 systemd-timesyncd(`offset_ms`=null) |
+| `version` | `agent`, `vehicle_sw`(git describe), `git`(commit) | 기동 시 1회 수집 |
+| `logging` | `recording`, `session_id`, `bytes`, `started_at`(epoch) | `telemetry.logging_topic` — 5초 넘게 수신이 없으면 `recording: false` |
+
+외부 명령은 전용 스레드에서 `interval_sec` 주기로 수집해 캐시한다 (rclpy executor 비차단).
+업로드 대기량은 기존 `queue`·`buffer`를 읽는다.

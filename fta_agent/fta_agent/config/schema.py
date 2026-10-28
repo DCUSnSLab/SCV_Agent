@@ -44,6 +44,8 @@ CONFIG_SCHEMA = {
                     "additionalProperties": False,
                     "properties": {
                         "interval_sec": {"type": "number", "exclusiveMinimum": 0},
+                        "logging_topic": {"type": "string", "pattern": "^/"},
+                        "workspace_dir": {"type": "string", "minLength": 1},
                     },
                 },
             },
