@@ -74,7 +74,10 @@ Agent::Agent(const rclcpp::NodeOptions & options)
   std::vector<tierlink::StreamSpec> specs;
   for (const auto & s : config.streams) {
     specs.push_back(tierlink::StreamSpec{s.name, tierlink::Tier::Monitor, s.delivery, false, 64});
-    catalog_ += s.name + "\t" + s.type + "\n";
+    const char * delivery = s.delivery == tierlink::Delivery::Reliable ? "reliable"
+                            : s.delivery == tierlink::Delivery::Frame  ? "frame"
+                                                                       : "latest";
+    catalog_ += s.name + "\t" + s.type + "\t" + s.topic + "\t" + delivery + "\n";
   }
   uplink_ = std::make_unique<tierlink::Uplink>(
     session_,

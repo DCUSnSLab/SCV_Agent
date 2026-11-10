@@ -17,7 +17,7 @@
 
 ## 동작
 
-- 스트림은 `config/streams.yaml`에 적는다. 토픽마다 이름, 타입, delivery(`latest`, `reliable`, `frame`), 주기(`rate_hz`)를 정한다. agent는 토픽을 원본 CDR로 받아(`GenericSubscription`) 주기로 거르고 zstd로 압축한 뒤 monitor 등급으로 보낸다. 서버가 타입을 알 수 있게 스트림 목록(`catalog`)을 주기마다 보낸다.
+- 스트림은 `config/streams.yaml`에 적는다. 토픽마다 이름, 타입, delivery(`latest`, `reliable`, `frame`), 주기(`rate_hz`)를 정한다. agent는 토픽을 원본 CDR로 받아(`GenericSubscription`) 주기로 거르고 zstd로 압축한 뒤 monitor 등급으로 보낸다. 서버가 타입을 알 수 있게 스트림 목록(`catalog`)을 주기마다 보낸다. 한 줄이 스트림 하나이고, 이름, 타입, 토픽, delivery를 탭으로 나눠 적는다.
 - 보내는 양은 agent 자신의 조절기(`Aimd`)가 정한다. teleop_epoch의 `teleop_video`가 모니터링 예산(`allowance`)을 발행하는 동안에는 그 값을 상한으로 쓴다. 예산이 `link.allowance_expires_ms` 동안 오지 않으면 상한을 푼다.
 - 서버 명령은 `streams.yaml`의 `commands`에 등록한 토픽에만 발행된다. 명령에는 TTL이 있어야 하고(최대 `command.max_ttl_ms`), 같은 `cmd_id`는 한 번만 실행된다. 결과(`done`, `unknown`, `expired`, `duplicate`, `invalid`)는 `result`로 돌려보낸다. 원격 정지는 `/teleop/stop`(`std_msgs/msg/Empty`)을 등록해 두는 것으로 처리한다. teleop_epoch의 `teleop_control`이 이 토픽을 받아 운전을 멈춘다.
 
