@@ -1,0 +1,13 @@
+# What the agent sends and which topics the server may publish to. Topics here are SCV's; a
+# vehicle with other topics copies this file and points streams_file at the copy.
+streams:
+  - {name: odom, topic: /odom, type: nav_msgs/msg/Odometry, delivery: latest, rate_hz: 2}
+  - {name: imu, topic: /vectornav/imu, type: sensor_msgs/msg/Imu, delivery: latest, rate_hz: 2}
+  - name: diagnostics
+    topic: /diagnostics
+    type: diagnostic_msgs/msg/DiagnosticArray
+    delivery: reliable
+    rate_hz: 1
+commands:
+  # Disarms remote driving; teleop_control listens on this topic.
+  - {id: stop, topic: /teleop/stop, type: std_msgs/msg/Empty}

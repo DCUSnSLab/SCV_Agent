@@ -1,0 +1,32 @@
+/**:
+  ros__parameters:
+    streams_file: ""
+    # zstd 3 is the library default; telemetry is small, so speed matters more than ratio.
+    zstd_level: 3
+    link:
+      prefix: "scv/r01"
+      # The server's Zenoh router. TCP: the school network has no UDP.
+      connect: ["tcp/127.0.0.1:7447"]
+      tick_ms: 10
+      burst_ms: 200
+      delay_window_ms: 10000
+      # The teleop process publishes every 100 ms; after this long without one, monitoring runs
+      # on its own controller.
+      allowance_expires_ms: 500
+      # Also the period of the stream catalog the server reads types from.
+      cap_update_ms: 100
+    command:
+      # A command must carry a time to live no longer than this; the clocks are synchronized.
+      max_ttl_ms: 10000
+      # How many recent command ids are kept to run a resent command only once.
+      remember: 1024
+    rate:
+      start_kbps: 200
+      min_kbps: 20
+      max_kbps: 2000
+      step_kbps: 50
+      factor: 0.7
+      hold_ms: 300
+      probe_ms: 1000
+      congested_above_ms: 100
+      clear_below_ms: 30
