@@ -37,6 +37,7 @@ private:
   std::string catalog_;
   zenoh::Session session_;
   std::unique_ptr<tierlink::Uplink> uplink_;
+  std::optional<zenoh::LivelinessToken> alive_;
   std::vector<RateGate> gates_;
   std::vector<rclcpp::GenericSubscription::SharedPtr> subscriptions_;
   std::map<std::string, rclcpp::GenericPublisher::SharedPtr> command_publishers_;
