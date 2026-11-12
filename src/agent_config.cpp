@@ -3,6 +3,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <stdexcept>
+#include <string>
 
 namespace fleet_telemetry
 {
@@ -38,16 +39,14 @@ AgentConfig parse_config(const std::string & yaml_text)
     if (rate <= 0.0) {
       throw std::runtime_error(where + ": rate_hz must be positive");
     }
-    config.streams.push_back(
-      TopicStream{
-        required(s, "name", where), required(s, "topic", where), required(s, "type", where),
-        delivery_of(required(s, "delivery", where), where), rate});
+    config.streams.push_back(TopicStream{
+      required(s, "name", where), required(s, "topic", where), required(s, "type", where),
+      delivery_of(required(s, "delivery", where), where), rate});
   }
   for (const auto & c : root["commands"]) {
     const std::string where = "command " + required(c, "id", "a command");
-    config.commands.push_back(
-      CommandInterface{
-        required(c, "id", where), required(c, "topic", where), required(c, "type", where)});
+    config.commands.push_back(CommandInterface{
+      required(c, "id", where), required(c, "topic", where), required(c, "type", where)});
   }
   return config;
 }

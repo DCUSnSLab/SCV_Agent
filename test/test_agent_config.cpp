@@ -9,8 +9,6 @@
 #include <stdexcept>
 #include <vector>
 
-using namespace std::chrono_literals;
-
 TEST(AgentConfig, ReadsStreamsAndCommands)
 {
   const auto c = fleet_telemetry::parse_config(R"(
@@ -45,11 +43,11 @@ TEST(AgentConfig, NamesTheWrongEntry)
 
 TEST(RateGate, PassesOncePerPeriod)
 {
-  fleet_telemetry::RateGate g(500ms);
-  EXPECT_TRUE(g.pass(0ms));
-  EXPECT_FALSE(g.pass(33ms));
-  EXPECT_FALSE(g.pass(499ms));
-  EXPECT_TRUE(g.pass(500ms));
+  fleet_telemetry::RateGate g(std::chrono::milliseconds(500));
+  EXPECT_TRUE(g.pass(std::chrono::milliseconds(0)));
+  EXPECT_FALSE(g.pass(std::chrono::milliseconds(33)));
+  EXPECT_FALSE(g.pass(std::chrono::milliseconds(499)));
+  EXPECT_TRUE(g.pass(std::chrono::milliseconds(500)));
 }
 
 TEST(Zstd, RoundTrips)

@@ -1,6 +1,8 @@
 #include "command_gate.hpp"
 
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace fleet_telemetry
 {

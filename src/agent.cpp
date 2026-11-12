@@ -7,8 +7,11 @@
 #include <chrono>
 #include <cstring>
 #include <fstream>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace fleet_telemetry
 {
@@ -62,10 +65,8 @@ tierlink::AimdConfig aimd_config(rclcpp::Node & node)
 Agent::Agent(const rclcpp::NodeOptions & options)
 : Node("fleet_telemetry", options),
   zstd_level_(declare_parameter<int>("zstd_level")),
-  session_(
-    zenoh::Session::open(
-      tierlink::make_config(
-        "client", declare_parameter<std::vector<std::string>>("link.connect"), {}, std::nullopt))),
+  session_(zenoh::Session::open(tierlink::make_config(
+    "client", declare_parameter<std::vector<std::string>>("link.connect"), {}, std::nullopt))),
   allowance_(milliseconds(declare_parameter<int>("link.allowance_expires_ms")))
 {
   const std::string prefix = declare_parameter<std::string>("link.prefix");
@@ -87,8 +88,8 @@ Agent::Agent(const rclcpp::NodeOptions & options)
       milliseconds(declare_parameter<int>("link.burst_ms")),
       milliseconds(declare_parameter<int>("link.delay_window_ms"))},
     std::make_unique<tierlink::Aimd>(aimd_config(*this)));
-  alive_.emplace(
-    session_.liveliness_declare_token(zenoh::KeyExpr(tierlink::alive_key(prefix, "fleet_telemetry"))));
+  alive_.emplace(session_.liveliness_declare_token(
+    zenoh::KeyExpr(tierlink::alive_key(prefix, "fleet_telemetry"))));
   subscribe_streams(config);
   for (const auto & c : config.commands) {
     command_publishers_[c.id] = create_generic_publisher(c.topic, c.type, rclcpp::QoS(10));

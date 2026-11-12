@@ -1,5 +1,5 @@
-#ifndef FLEET_TELEMETRY__AGENT_CONFIG_HPP_
-#define FLEET_TELEMETRY__AGENT_CONFIG_HPP_
+#ifndef AGENT_CONFIG_HPP_
+#define AGENT_CONFIG_HPP_
 
 #include <tierlink/stream.hpp>
 
@@ -38,4 +38,4 @@ AgentConfig parse_config(const std::string & yaml_text);
 
 }  // namespace fleet_telemetry
 
-#endif  // FLEET_TELEMETRY__AGENT_CONFIG_HPP_
+#endif  // AGENT_CONFIG_HPP_

@@ -11,6 +11,7 @@
 #include <random>
 #include <string>
 #include <thread>
+#include <vector>
 
 // A debugging server: sends one command and prints the vehicle's answer. The payload is CDR in hex,
 // empty for std_msgs/msg/Empty-like types that carry only the CDR header.
@@ -48,10 +49,8 @@ int main(int argc, char ** argv)
   const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
                      std::chrono::system_clock::now().time_since_epoch())
                      .count();
-  commands.send(
-    fleet_telemetry::encode(
-      fleet_telemetry::Command{
-        cmd_id, argv[3], static_cast<std::uint64_t>(now), std::stoull(argv[4]), payload}));
+  commands.send(fleet_telemetry::encode(fleet_telemetry::Command{
+    cmd_id, argv[3], static_cast<std::uint64_t>(now), std::stoull(argv[4]), payload}));
   std::unique_lock<std::mutex> lock(mutex);
   if (!cv.wait_for(lock, std::chrono::seconds(3), [&] { return status.has_value(); })) {
     std::fprintf(stderr, "no answer from the vehicle\n");

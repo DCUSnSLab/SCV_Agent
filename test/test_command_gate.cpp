@@ -5,7 +5,6 @@
 #include <chrono>
 #include <vector>
 
-using namespace std::chrono_literals;
 using fleet_telemetry::Command;
 using fleet_telemetry::CommandGate;
 using fleet_telemetry::CommandStatus;
@@ -15,7 +14,7 @@ namespace
 
 CommandGate gate()
 {
-  return CommandGate({{"stop", "/teleop/stop", "std_msgs/msg/Empty"}}, 10s, 2);
+  return CommandGate({{"stop", "/teleop/stop", "std_msgs/msg/Empty"}}, std::chrono::seconds(10), 2);
 }
 
 Command command(const char * id, std::uint64_t issued, std::uint64_t ttl = 5000)

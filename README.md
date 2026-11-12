@@ -6,14 +6,14 @@
 
 ## 구성
 
-| 파일 | 역할 |
-| --- | --- |
-| `src/agent.hpp` | 컴포넌트 `fleet_telemetry::Agent`. 스트림을 받아 보내고, 명령을 실행한다 |
-| `src/agent_config.hpp` | 스트림 선언과 명령 레지스트리를 YAML에서 읽는다 |
-| `src/command_gate.hpp` | 명령 형식과 검사(등록 여부, TTL, `cmd_id` 중복) |
-| `src/rate_gate.hpp` | 스트림마다 정한 주기로 거른다. 복사하기 전에 거르므로 고주기 토픽의 비용이 보내는 주기에 비례한다 |
-| `src/zstd_codec.hpp` | 원본 CDR을 zstd로 압축한다 |
-| `src/send_command_main.cpp` | `send_command`. 명령 하나를 보내고 응답을 출력하는 디버깅 도구 |
+| 파일                        | 역할                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------- |
+| `src/agent.hpp`             | 컴포넌트 `fleet_telemetry::Agent`. 스트림을 받아 보내고, 명령을 실행한다                          |
+| `src/agent_config.hpp`      | 스트림 선언과 명령 레지스트리를 YAML에서 읽는다                                                   |
+| `src/command_gate.hpp`      | 명령 형식과 검사(등록 여부, TTL, `cmd_id` 중복)                                                   |
+| `src/rate_gate.hpp`         | 스트림마다 정한 주기로 거른다. 복사하기 전에 거르므로 고주기 토픽의 비용이 보내는 주기에 비례한다 |
+| `src/zstd_codec.hpp`        | 원본 CDR을 zstd로 압축한다                                                                        |
+| `src/send_command_main.cpp` | `send_command`. 명령 하나를 보내고 응답을 출력하는 디버깅 도구                                    |
 
 ## 동작
 
@@ -35,4 +35,3 @@ colcon test-result --test-result-base build/fleet_telemetry
 ```
 
 아직 없는 것: 이미지와 PCD 스트림(JPEG, voxel), 필드 값으로 거르는 샘플러(deadband, event), agent 자신의 상태(health) 스트림.
-

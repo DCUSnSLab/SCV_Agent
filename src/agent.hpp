@@ -1,5 +1,5 @@
-#ifndef FLEET_TELEMETRY__AGENT_HPP_
-#define FLEET_TELEMETRY__AGENT_HPP_
+#ifndef AGENT_HPP_
+#define AGENT_HPP_
 
 #include "agent_config.hpp"
 #include "command_gate.hpp"
@@ -56,4 +56,4 @@ private:
 
 }  // namespace fleet_telemetry
 
-#endif  // FLEET_TELEMETRY__AGENT_HPP_
+#endif  // AGENT_HPP_

@@ -46,7 +46,9 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument('container', default_value=''),
-            DeclareLaunchArgument('param_file', default_value=config('fleet_telemetry.param.yaml')),
+            DeclareLaunchArgument(
+                'param_file', default_value=config('fleet_telemetry.param.yaml')
+            ),
             DeclareLaunchArgument('streams_file', default_value=config('streams.yaml')),
             OpaqueFunction(function=launch_setup),
         ]

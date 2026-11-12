@@ -1,5 +1,5 @@
-#ifndef FLEET_TELEMETRY__RATE_GATE_HPP_
-#define FLEET_TELEMETRY__RATE_GATE_HPP_
+#ifndef RATE_GATE_HPP_
+#define RATE_GATE_HPP_
 
 #include <chrono>
 #include <optional>
@@ -30,4 +30,4 @@ private:
 
 }  // namespace fleet_telemetry
 
-#endif  // FLEET_TELEMETRY__RATE_GATE_HPP_
+#endif  // RATE_GATE_HPP_
