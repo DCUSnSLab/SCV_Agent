@@ -8,6 +8,22 @@ streams:
     type: diagnostic_msgs/msg/DiagnosticArray
     delivery: reliable
     rate_hz: 1
+  # hunter_mux: the selected source and mode, and whether the e-stop is latched.
+  - name: mux_status
+    topic: /vehicle/mux_status
+    type: hunter_mux_msgs/msg/MuxStatus
+    delivery: latest
+    rate_hz: 2
+  - name: estop_status
+    topic: /vehicle/estop_status
+    type: hunter_mux_msgs/msg/EStopStatus
+    delivery: latest
+    rate_hz: 2
 commands:
   # Disarms remote driving; teleop_control listens on this topic.
   - { id: stop, topic: /teleop/stop, type: std_msgs/msg/Empty }
+  # hunter_mux: latch the e-stop, release it (only once no cause is active), and pick the source
+  # (CmdMode.mode 1 navigation, 2 remote).
+  - { id: estop, topic: /remote/estop, type: std_msgs/msg/Empty }
+  - { id: estop_reset, topic: /remote/estop_reset, type: std_msgs/msg/Empty }
+  - { id: cmd_mode, topic: /remote/cmd_mode, type: hunter_mux_msgs/msg/CmdMode }
