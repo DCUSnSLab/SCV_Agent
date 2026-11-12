@@ -87,7 +87,8 @@ Agent::Agent(const rclcpp::NodeOptions & options)
       milliseconds(declare_parameter<int>("link.tick_ms")),
       milliseconds(declare_parameter<int>("link.burst_ms")),
       milliseconds(declare_parameter<int>("link.delay_window_ms")),
-      milliseconds(declare_parameter<int>("link.report_ms"))},
+      milliseconds(declare_parameter<int>("link.report_ms")),
+      static_cast<std::size_t>(declare_parameter<int>("link.chunk_bytes"))},
     std::make_unique<tierlink::Budgeted>(
       budget_, std::make_unique<tierlink::Aimd>(aimd_config(*this)),
       milliseconds(declare_parameter<int>("link.budget_expires_ms"))));

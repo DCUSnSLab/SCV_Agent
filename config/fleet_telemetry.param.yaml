@@ -12,6 +12,9 @@
       delay_window_ms: 10000
       # How often the Uplink reports to the link manager (tierlink_edge).
       report_ms: 100
+      # Larger items go out in pieces of this size, paced by the budget, so one point cloud
+      # never puts more than this into the link's queue at once.
+      chunk_bytes: 4096
       # The link manager publishes every 100 ms; after this long without a budget, monitoring
       # runs on its own controller (rate.*).
       budget_expires_ms: 500
