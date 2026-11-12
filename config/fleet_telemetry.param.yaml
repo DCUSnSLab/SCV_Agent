@@ -5,16 +5,18 @@
     zstd_level: 3
     link:
       prefix: "scv/r01"
-      # The server's Zenoh router. TCP: the school network has no UDP.
+      # The vehicle's router, tierlink_edge on this host; it holds the links to the server.
       connect: ["tcp/127.0.0.1:7447"]
       tick_ms: 10
       burst_ms: 200
       delay_window_ms: 10000
-      # The teleop process publishes every 100 ms; after this long without one, monitoring runs
-      # on its own controller.
-      allowance_expires_ms: 500
-      # Also the period of the stream catalog the server reads types from.
-      cap_update_ms: 100
+      # How often the Uplink reports to the link manager (tierlink_edge).
+      report_ms: 100
+      # The link manager publishes every 100 ms; after this long without a budget, monitoring
+      # runs on its own controller (rate.*).
+      budget_expires_ms: 500
+      # Period of the stream catalog the server reads types from.
+      catalog_ms: 100
     command:
       # A command must carry a time to live no longer than this; the clocks are synchronized.
       max_ttl_ms: 10000

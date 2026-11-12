@@ -45,12 +45,13 @@ private:
   std::unique_ptr<tierlink::ControlPublisher> result_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 
-  // The allowance and commands arrive on Zenoh threads, the timer runs on this node's.
+  // The link manager's budget for the monitor tier; the Uplink's controller follows it while fresh.
+  std::shared_ptr<tierlink::BudgetSlot> budget_;
+  // Commands arrive on Zenoh threads.
   std::mutex mutex_;
-  tierlink::Allowance allowance_;
   std::optional<CommandGate> gate_;
   // Declared last, so they are undeclared first and no callback outlives the members above.
-  std::optional<tierlink::ControlSubscriber> allowance_sub_;
+  std::optional<tierlink::BudgetSubscriber> budget_sub_;
   std::optional<tierlink::ControlSubscriber> command_sub_;
 };
 

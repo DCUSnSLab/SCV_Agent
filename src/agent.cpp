@@ -67,7 +67,7 @@ Agent::Agent(const rclcpp::NodeOptions & options)
   zstd_level_(declare_parameter<int>("zstd_level")),
   session_(zenoh::Session::open(tierlink::make_config(
     "client", declare_parameter<std::vector<std::string>>("link.connect"), {}, std::nullopt))),
-  allowance_(milliseconds(declare_parameter<int>("link.allowance_expires_ms")))
+  budget_(std::make_shared<tierlink::BudgetSlot>())
 {
   const std::string prefix = declare_parameter<std::string>("link.prefix");
   const AgentConfig config =
@@ -86,8 +86,11 @@ Agent::Agent(const rclcpp::NodeOptions & options)
       prefix, tierlink::Tier::Monitor, std::move(specs),
       milliseconds(declare_parameter<int>("link.tick_ms")),
       milliseconds(declare_parameter<int>("link.burst_ms")),
-      milliseconds(declare_parameter<int>("link.delay_window_ms"))},
-    std::make_unique<tierlink::Aimd>(aimd_config(*this)));
+      milliseconds(declare_parameter<int>("link.delay_window_ms")),
+      milliseconds(declare_parameter<int>("link.report_ms"))},
+    std::make_unique<tierlink::Budgeted>(
+      budget_, std::make_unique<tierlink::Aimd>(aimd_config(*this)),
+      milliseconds(declare_parameter<int>("link.budget_expires_ms"))));
   alive_.emplace(session_.liveliness_declare_token(
     zenoh::KeyExpr(tierlink::alive_key(prefix, "fleet_telemetry"))));
   subscribe_streams(config);
@@ -101,16 +104,8 @@ Agent::Agent(const rclcpp::NodeOptions & options)
   catalog_pub_ = std::make_unique<tierlink::ControlPublisher>(session_, prefix, monitor, "catalog");
   result_pub_ = std::make_unique<tierlink::ControlPublisher>(session_, prefix, monitor, "result");
   timer_ = create_wall_timer(
-    milliseconds(declare_parameter<int>("link.cap_update_ms")), [this] { on_timer(); });
-  allowance_sub_.emplace(
-    session_, prefix, monitor, tierlink::kAllowanceName,
-    [this](const std::vector<std::uint8_t> & m) {
-      const auto bps = tierlink::decode_bps(m);
-      if (bps) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        allowance_.update(*bps, tierlink::steady_now());
-      }
-    });
+    milliseconds(declare_parameter<int>("link.catalog_ms")), [this] { on_timer(); });
+  budget_sub_.emplace(session_, prefix, monitor, budget_);
   command_sub_.emplace(
     session_, prefix, monitor, "command",
     [this](const std::vector<std::uint8_t> & m) { on_command(m); });
@@ -161,12 +156,6 @@ void Agent::on_command(const std::vector<std::uint8_t> & message)
 
 void Agent::on_timer()
 {
-  std::optional<std::uint64_t> cap;
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    cap = allowance_.cap(tierlink::steady_now());
-  }
-  uplink_->set_cap(cap);
   catalog_pub_->send(std::vector<std::uint8_t>(catalog_.begin(), catalog_.end()));
 }
 
