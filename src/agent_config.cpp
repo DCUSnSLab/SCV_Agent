@@ -39,9 +39,30 @@ AgentConfig parse_config(const std::string & yaml_text)
     if (rate <= 0.0) {
       throw std::runtime_error(where + ": rate_hz must be positive");
     }
-    config.streams.push_back(TopicStream{
+    TopicStream stream{
       required(s, "name", where), required(s, "topic", where), required(s, "type", where),
-      delivery_of(required(s, "delivery", where), where), rate});
+      delivery_of(required(s, "delivery", where), where), rate, std::nullopt, false};
+    if (s["range"]) {
+      const YAML::Node r = s["range"];
+      const std::string at = where + ": range";
+      stream.range = RangeCodecConfig{
+        std::stod(required(r, "step_m", at)), std::stod(required(r, "max_range_m", at)),
+        std::stoi(required(r, "sectors", at)), std::stoi(required(r, "intensity_bits", at)), 0};
+      if (stream.type != "sensor_msgs/msg/PointCloud2") {
+        throw std::runtime_error(where + ": range needs type sensor_msgs/msg/PointCloud2");
+      }
+      if (stream.range->intensity_bits != 4 && stream.range->intensity_bits != 8) {
+        throw std::runtime_error(at + ": intensity_bits must be 4 or 8");
+      }
+    }
+    if (s["transport"]) {
+      const std::string t = s["transport"].as<std::string>();
+      if (t != "udp" && t != "tcp") {
+        throw std::runtime_error(where + ": transport must be tcp or udp");
+      }
+      stream.udp = t == "udp";
+    }
+    config.streams.push_back(std::move(stream));
   }
   for (const auto & c : root["commands"]) {
     const std::string where = "command " + required(c, "id", "a command");

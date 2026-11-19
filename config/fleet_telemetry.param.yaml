@@ -15,6 +15,10 @@
       # Larger items go out in pieces of this size, paced by the budget, so one point cloud
       # never puts more than this into the link's queue at once.
       chunk_bytes: 4096
+      # Streams with transport: udp go out in pieces that fit one datagram with Zenoh's headers
+      # (tierlink's link.frame_chunk_bytes), with one XOR parity piece per fec_group pieces.
+      udp_chunk_bytes: 1200
+      fec_group: 4
       # The link manager publishes every 100 ms; after this long without a budget, monitoring
       # runs on its own controller (rate.*).
       budget_expires_ms: 500

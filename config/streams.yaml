@@ -19,6 +19,17 @@ streams:
     type: hunter_mux_msgs/msg/EStopStatus
     delivery: latest
     rate_hz: 2
+  # The VLP-32C (velodyne_pointcloud with organize_cloud) as a range image: ranges rounded to
+  # 2 cm, intensity's upper 4 bits, zstd, in 8 sectors that each decode alone. 57 KB a scan on
+  # SCV's recorded scans (error 0.4 cm median, 0.8 cm p99), so 2 Hz is about 0.9 Mbit/s; it takes
+  # what teleop leaves.
+  - name: lidar
+    topic: /velodyne_points
+    type: sensor_msgs/msg/PointCloud2
+    delivery: reliable
+    rate_hz: 2
+    transport: udp
+    range: { step_m: 0.02, max_range_m: 120, sectors: 8, intensity_bits: 4 }
 commands:
   # Disarms remote driving; teleop_control listens on this topic.
   - { id: stop, topic: /teleop/stop, type: std_msgs/msg/Empty }

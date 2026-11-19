@@ -13,6 +13,7 @@
   <depend>libzstd-dev</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
+  <depend>sensor_msgs</depend>
   <depend>tierlink</depend>
   <depend>yaml_cpp_vendor</depend>
 

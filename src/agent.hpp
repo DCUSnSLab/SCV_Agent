@@ -30,6 +30,7 @@ public:
 
 private:
   void subscribe_streams(const AgentConfig & config);
+  void subscribe_scan(std::size_t i, const TopicStream & s);
   void on_command(const std::vector<std::uint8_t> & message);
   void on_timer();
 
@@ -39,6 +40,8 @@ private:
   std::unique_ptr<tierlink::Uplink> uplink_;
   std::optional<zenoh::LivelinessToken> alive_;
   std::vector<RateGate> gates_;
+  // Per stream, the sequence of the next lidar scan.
+  std::vector<std::uint32_t> scans_;
   std::vector<rclcpp::GenericSubscription::SharedPtr> subscriptions_;
   std::map<std::string, rclcpp::GenericPublisher::SharedPtr> command_publishers_;
   std::unique_ptr<tierlink::ControlPublisher> catalog_pub_;

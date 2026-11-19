@@ -10,13 +10,14 @@ find_package(ament_cmake REQUIRED)
 find_package(PkgConfig REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(tierlink REQUIRED)
 find_package(yaml_cpp_vendor REQUIRED)
 find_package(yaml-cpp REQUIRED)
 pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET libzstd)
 
 add_library(fleet_telemetry_core STATIC
-  src/agent_config.cpp src/command_gate.cpp src/zstd_codec.cpp)
+  src/agent_config.cpp src/command_gate.cpp src/range_codec.cpp src/zstd_codec.cpp)
 set_target_properties(fleet_telemetry_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_features(fleet_telemetry_core PUBLIC cxx_std_17)
 target_compile_options(fleet_telemetry_core PRIVATE -Wall -Wextra -Wpedantic)
@@ -26,7 +27,7 @@ target_link_libraries(fleet_telemetry_core PUBLIC tierlink::tierlink yaml-cpp Pk
 add_library(fleet_telemetry_component SHARED src/agent.cpp)
 target_compile_options(fleet_telemetry_component PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(fleet_telemetry_component fleet_telemetry_core)
-ament_target_dependencies(fleet_telemetry_component rclcpp rclcpp_components)
+ament_target_dependencies(fleet_telemetry_component rclcpp rclcpp_components sensor_msgs)
 rclcpp_components_register_node(fleet_telemetry_component
   PLUGIN "fleet_telemetry::Agent" EXECUTABLE fleet_telemetry_node)
 
@@ -43,7 +44,7 @@ install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
-  foreach(name agent_config command_gate)
+  foreach(name agent_config command_gate range_codec)
     ament_add_gtest(test_${name} test/test_${name}.cpp)
     target_link_libraries(test_${name} fleet_telemetry_core)
   endforeach()

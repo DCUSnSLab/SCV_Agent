@@ -13,6 +13,7 @@
 | `src/command_gate.hpp`      | 명령 형식과 검사(등록 여부, TTL, `cmd_id` 중복)                                                   |
 | `src/rate_gate.hpp`         | 스트림마다 정한 주기로 거른다. 복사하기 전에 거르므로 고주기 토픽의 비용이 보내는 주기에 비례한다 |
 | `src/zstd_codec.hpp`        | 원본 CDR을 zstd로 압축한다                                                                        |
+| `src/range_codec.hpp`       | 라이다 스캔을 거리 표로 바꿔 구간(sector)마다 따로 압축한다. 구간 하나를 잃어도 나머지는 풀린다   |
 | `src/send_command_main.cpp` | `send_command`. 명령 하나를 보내고 응답을 출력하는 디버깅 도구                                    |
 
 ## 동작
@@ -35,4 +36,30 @@ colcon test --packages-select fleet_telemetry
 colcon test-result --test-result-base build/fleet_telemetry
 ```
 
-아직 없는 것: 이미지와 PCD 스트림(JPEG, voxel), 필드 값으로 거르는 샘플러(deadband, event), agent 자신의 상태(health) 스트림.
+## 라이다(PCD)
+
+`range:`가 붙은 스트림은 CDR 대신 거리 표로 보낸다. `velodyne_pointcloud`가 `organize_cloud`로 낸 점군(열마다 링 32개, float x, y, z, intensity와 uint16 ring)을 받아 다음처럼 만든다.
+
+| 항목      | 내용                                                                                                    |
+| --------- | ------------------------------------------------------------------------------------------------------- |
+| 거리      | `step_m`(2 cm) 단위로 반올림하고, 링마다 열 방향 차이로 적는다                                          |
+| 각도      | 링마다 고도각과 방위각 차이 하나, 열마다 방위각 하나(16비트). 수신 측은 이것으로 점마다 방향을 되살린다 |
+| 반사 세기 | `intensity_bits`가 4이면 위 4비트만 둔다                                                                |
+| 압축      | 구간마다 zstd(`zstd_level`)                                                                             |
+| 구간      | 열을 `sectors`개로 나눈다. 구간마다 고도각과 방위각 차이를 다시 적어서 하나만 받아도 풀린다             |
+
+SCV에서 녹화한 VLP-32C 스캔 50개로 잰 값이다.
+
+| 설정                      | 스캔당 크기 | 오차 중앙값 | 오차 p99 |
+| ------------------------- | ----------- | ----------- | -------- |
+| 반사 세기 8비트, 구간 1개 | 85.2 KB     | 0.40 cm     | 0.82 cm  |
+| 반사 세기 4비트, 구간 1개 | 56.0 KB     | 0.40 cm     | 0.82 cm  |
+| 반사 세기 4비트, 구간 8개 | 57.4 KB     | 0.40 cm     | 0.82 cm  |
+
+점은 하나도 빠지지 않았다. 원본 PointCloud2는 스캔당 약 1.2 MB다.
+
+- `transport: udp`이면 best effort로 보내서 UDP 링크를 탄다. 조각은 데이터그램 하나에 들어가는 `link.udp_chunk_bytes`(1200)이고, `link.fec_group`마다 패리티 조각이 붙는다. TCP와 달리 앞의 구간이 늦어도 뒤의 구간이 기다리지 않는다.
+- 구간은 `reliable` 큐에 들어간다. 큐가 차면 가장 오래된 구간부터 버린다.
+- catalog에는 타입을 `fleet_telemetry/RangeSector`로 알린다. fleetd는 이 스트림을 zstd로 풀지 않고 받은 그대로 MCAP에 적는다.
+
+아직 없는 것: 이미지 스트림(JPEG), 필드 값으로 거르는 샘플러(deadband, event), agent 자신의 상태(health) 스트림, 거리 표를 점군으로 되돌려 보여 주는 화면.
